@@ -1,0 +1,9 @@
+.idea
+*.iml
+# don't commit unencrypted files
+*decrypted.env
+*decrypted.yaml
+# don't commit any agekey
+*.agekey
+misc.xml
+vcs.xml
