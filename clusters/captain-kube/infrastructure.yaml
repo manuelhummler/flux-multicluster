@@ -49,6 +49,8 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+  dependsOn:
+    - name: prometheus-operator-crds
   path: ./infrastructure/captain-kube/cert-manager
   prune: true
   healthChecks:
