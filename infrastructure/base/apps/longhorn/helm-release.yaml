@@ -1,0 +1,41 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: longhorn
+  namespace: longhorn-system
+spec:
+  chart:
+    spec:
+      chart: longhorn
+      sourceRef:
+        kind: HelmRepository
+        name: longhorn
+        namespace: flux-system
+      version: v1.7.1
+  interval: 1m0s
+  values:
+    ingress:
+      enabled: true
+      ingressClassName: nginx
+      host: longhorn.${DOMAIN}
+      tls: true
+      secureBackends: true
+      # kics-scan ignore-line
+      tlsSecret: longhorn-tls
+      annotations:
+        cert-manager.io/cluster-issuer: "letsencrypt-prod"
+        # authenticate with oauth2-proxy
+        nginx.ingress.kubernetes.io/auth-response-headers: x-auth-request-user, x-auth-request-email
+        nginx.ingress.kubernetes.io/auth-signin: https://${OAUTH_PROXY_DOMAIN}/oauth2/start?rd=$scheme://$host$request_uri
+        nginx.ingress.kubernetes.io/auth-url: https://${OAUTH_PROXY_DOMAIN}/oauth2/auth
+    networkPolicies:
+      enabled: true
+      type: "rke1"
+    metrics:
+      serviceMonitor:
+        enabled: true
+    persistence:
+      defaultClassReplicaCount: 2
+    defaultSettings:
+      # set to true when number of worker nodes is < 3
+      replicaSoftAntiAffinity: true

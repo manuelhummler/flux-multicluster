@@ -1,0 +1,2 @@
+# don't change line ending on windows
+*.env -crlf
