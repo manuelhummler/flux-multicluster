@@ -1,0 +1,37 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: cilium-selfsigned
+  namespace: kube-system
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: cilium-selfsigned-ca
+  namespace: kube-system
+spec:
+  commonName: cilium-selfsigned-ca
+  secretName: cilium-selfsigned-ca
+  dnsNames:
+    - '*.cilium.io'
+    - cilium.io
+  privateKey:
+    algorithm: ECDSA
+    size: 384
+    rotationPolicy: Always
+  duration: 26280h
+  isCA: true
+  issuerRef:
+    name: cilium-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: cilium-selfsigned-ca
+  namespace: kube-system
+spec:
+  ca:
+    secretName: cilium-selfsigned-ca

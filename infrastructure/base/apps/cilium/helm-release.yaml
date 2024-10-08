@@ -1,0 +1,95 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cilium
+  namespace: kube-system
+spec:
+  interval: 5m
+  chart:
+    spec:
+      version: "1.16.2"
+      chart: cilium
+      sourceRef:
+        kind: HelmRepository
+        name: cilium
+        namespace: flux-system
+      interval: 60m
+  values:
+    # run only one cilium operator on a single node
+    operator:
+      replicas: 1
+    # disable kube-proxy and use cilium only
+    kubeProxyReplacement: "true"
+    k8sServiceHost: "${API_SERVER_IP}"
+    k8sServicePort: "${API_SERVER_PORT}"
+    # enable icmp networkPolicies
+    extraConfig:
+      enable-icmp-rules: "true"
+    # https://docs.cilium.io/en/stable/installation/cni-chaining-portmap/
+    # configure cilium to use ingress-nginx in hostPort mode and not hostNetwork to reduce attacking surface (only expose port 80 and 443)
+    cni:
+      chainingMode: portmap
+    # -- Roll out cilium agent pods automatically when configmap is updated.
+    rollOutCiliumPods: true
+    pmtuDiscovery:
+      # -- Enable path MTU discovery to send ICMP fragmentation-needed replies to the client.
+      enabled: false
+    # bandwidthManager
+    bandwidthManager:
+      enabled: true
+    # hubble
+    hubble:
+      enabled: true
+      metrics:
+        enabled:
+          - dns:query;ignoreAAAA
+          - drop
+          - tcp
+          - flow
+          - icmp
+          #- http
+          - httpV2
+          - port-distribution
+        serviceMonitor:
+          # -- Create ServiceMonitor resources for Prometheus Operator.
+          # This requires the prometheus CRDs to be available.
+          # ref: https://github.com/prometheus-operator/prometheus-operator/blob/main/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml)
+          enabled: true
+        dashboards:
+          enabled: true
+      tls:
+        auto:
+          method: certmanager
+          certManagerIssuerRef:
+            group: cert-manager.io
+            kind: Issuer
+            name: cilium-selfsigned-ca
+      relay:
+        enabled: true
+        prometheus:
+          enabled: true
+          serviceMonitor:
+            enabled: true
+      ui:
+        enabled: true
+        ingress:
+          enabled: true
+          annotations:
+            cert-manager.io/cluster-issuer: "letsencrypt-prod"
+            # secure dashboard with OAuth
+            nginx.ingress.kubernetes.io/auth-response-headers: x-auth-request-user, x-auth-request-email
+            nginx.ingress.kubernetes.io/auth-signin: https://${OAUTH_PROXY_DOMAIN}/oauth2/start?rd=$scheme://$host$request_uri
+            nginx.ingress.kubernetes.io/auth-url: https://${OAUTH_PROXY_DOMAIN}/oauth2/auth
+          className: "nginx"
+          hosts:
+            - hubble.${DOMAIN}
+          tls:
+            - secretName: hubble-ui-tls
+              hosts:
+                - hubble.${DOMAIN}
+    prometheus:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+    dashboards:
+      enabled: true
