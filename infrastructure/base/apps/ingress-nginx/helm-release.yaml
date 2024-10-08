@@ -1,0 +1,96 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ingress-nginx
+  namespace: ingress-nginx
+spec:
+  chart:
+    spec:
+      chart: ingress-nginx
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: ingress-nginx
+        namespace: flux-system
+      version: 4.11.2
+  interval: 1h
+  values:
+    controller:
+      # needs to be allowed to configure artifactory
+      allowSnippetAnnotations: true
+      # only expose port 80 and 443
+      hostPort:
+        enabled: true
+      # By default, while using host network, name resolution uses the host's DNS. If you wish nginx-controller to keep resolving names inside the k8s network, use ClusterFirstWithHostNet.
+      dnsPolicy: ClusterFirstWithHostNet
+      networkPolicy:
+        enabled: true
+      ingressClassResource:
+        default: true
+      kind: DaemonSet
+      service:
+        type: ClusterIP
+      # Configure nginx
+      config:
+        compute-full-forward-for: true
+        use-forward-headers: true
+        proxy-buffer-size: "16k"
+        # configure proxy-protocol for HAProxy
+        #use-proxy-procotol: true
+        # configure Tracing
+        #enable-opentelemetry: "true"
+        #opentelemetry-operation-name: "HTTP $request_method $service_name $uri"
+        #opentelemetry-trust-incoming-span: "true"
+        #otlp-collector-host: "jaeger-operator-jaeger-collector.observability"
+        #otlp-collector-port: "4317"
+        #otel-max-queuesize: "2048"
+        #otel-schedule-delay-millis: "5000"
+        #otel-max-export-batch-size: "512"
+        #otel-service-name: "nginx-proxy" # Opentelemetry resource name
+        #otel-sampler: "AlwaysOn" # Also: AlwaysOff, TraceIdRatioBased
+        #otel-sampler-ratio: "1.0"
+        #otel-sampler-parent-based: "false"
+      #opentelemetry:
+      #  enabled: true
+      # ToDo: test updateStrategy
+      updateStrategy: {}
+      # ToDo: setup opentelemetry
+      metrics:
+        enabled: true
+        serviceMonitor:
+          enabled: true
+        prometheusRule:
+          enabled: true
+          rules:
+          - alert: NGINXConfigFailed
+            annotations:
+              description: bad ingress config - nginx config test failed
+              summary: uninstall the latest ingress changes to allow config reloads to resume
+            expr: count(nginx_ingress_controller_config_last_reload_successful == 0) > 0
+            for: 1s
+            labels:
+              severity: critical
+          - alert: NGINXCertificateExpiry
+            annotations:
+              description: ssl certificate(s) will expire in less then a week
+              summary: renew expiring certificates to avoid downtime
+            expr: (avg(nginx_ingress_controller_ssl_expire_time_seconds) by (host) - time()) < 604800
+            for: 1s
+            labels:
+              severity: critical
+          - alert: NGINXTooMany500s
+            annotations:
+              description: Too many 5XXs
+              summary: More than 5% of all requests returned 5XX, this requires your attention
+            expr: 100 * ( sum( nginx_ingress_controller_requests{status=~"5.+"} ) / sum(nginx_ingress_controller_requests) ) > 5
+            for: 1m
+            labels:
+              severity: warning
+          - alert: NGINXTooMany400s
+            annotations:
+              description: Too many 4XXs
+              summary: More than 5% of all requests returned 4XX, this requires your attention
+            expr: 100 * ( sum( nginx_ingress_controller_requests{status=~"4.+"} ) / sum(nginx_ingress_controller_requests) ) > 5
+            for: 1m
+            labels:
+              severity: warning
