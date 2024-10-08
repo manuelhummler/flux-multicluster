@@ -100,7 +100,7 @@ spec:
   dependsOn:
     - name: prometheus-operator-crds
     - name: cert-manager
-  path: ./infrastructure/captain-kube/longhorn
+  path: ./infrastructure/captain-kube/cilium
   prune: true
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
