@@ -1,0 +1,39 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: postgres-operator
+  namespace: postgres-operator
+spec:
+  chart:
+    spec:
+      chart: postgres-operator
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: postgres-operator
+        namespace: flux-system
+      version: v1.13.0
+  interval: 1m0s
+  values:
+    securityContext:
+      runAsUser: 1000
+      runAsNonRoot: true
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
+    # configure S3 Backup storage
+    configKubernetes:
+      # allow user secrets in other namespaces than the Postgres cluster
+      enable_cross_namespace_secret: true
+      # namespaced name of the ConfigMap with environment variables to populate on every pod
+      pod_environment_configmap: "postgres-operator/postgres-operator-config"
+      # name of the Secret (in cluster namespace) with environment variables to populate on every pod
+      pod_environment_secret: "postgres-operator-secret"
+      # set user and group for the spilo container (required to run Spilo as non-root process)
+      spilo_runasuser: 101
+      spilo_runasgroup: 103
+      # group ID with write-access to volumes (required to run Spilo as non-root process)
+      spilo_fsgroup: 103

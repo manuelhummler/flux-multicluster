@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base/apps/postgres-operator
+# create all needed secrets with fix name
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: postgres-operator-config
+    namespace: postgres-operator
+    literals:
+      - WAL_S3_BUCKET=postgres-operator
+      - WAL_BUCKET_SCOPE_PREFIX=""
+      - WAL_BUCKET_SCOPE_SUFFIX=""
+      - USE_WALG_BACKUP="true"
+      - USE_WALG_RESTORE="true"
+      - BACKUP_SCHEDULE='00 10 * * *'
+      # needed for MinIO
+      - AWS_S3_FORCE_PATH_STYLE="true"
+      # Endpoint URL to your S3 Endpoint; MinIO in this example
+      - AWS_ENDPOINT=http://minio.minio:9000
+      - AWS_REGION=minio
+      - WALG_DISABLE_S3_SSE="true"
+      - BACKUP_NUM_TO_RETAIN="5"
+      - CLONE_USE_WALG_RESTORE="true"
