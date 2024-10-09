@@ -1,0 +1,83 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: postgres-operator-ui
+  namespace: postgres-operator-ui
+spec:
+  chart:
+    spec:
+      chart: postgres-operator-ui
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: postgres-operator-ui
+        namespace: flux-system
+      version: v1.13.0
+  interval: 1m0s
+  postRenderers:
+    - kustomize:
+        patches:
+          - patch: |-
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: postgres-operator-ui
+                namespace: postgres-operator-ui
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - name: service
+                        securityContext:
+                          allowPrivilegeEscalation: false
+                          runAsNonRoot: true
+                          runAsUser: 1000
+                          capabilities:
+                            drop: ["ALL"]
+                          seccompProfile:
+                            type: RuntimeDefault
+  values:
+    envs:
+      # IMPORTANT: While operator chart and UI chart are independent, this is the interface between
+      # UI and operator API. Insert the service name of the operator API here!
+      appUrl: "https://pg-ui.${DOMAIN}"
+      operatorApiUrl: "http://postgres-operator.postgres-operator:8080"
+    # configure UI ingress. If needed: "enabled: true"
+    ingress:
+      enabled: true
+      annotations:
+        cert-manager.io/cluster-issuer: "letsencrypt-prod"
+        # authenticate with oauth2-proxy
+        nginx.ingress.kubernetes.io/auth-response-headers: x-auth-request-user, x-auth-request-email
+        nginx.ingress.kubernetes.io/auth-signin: https://${OAUTH_PROXY_DOMAIN}/oauth2/start?rd=$scheme://$host$request_uri
+        nginx.ingress.kubernetes.io/auth-url: https://${OAUTH_PROXY_DOMAIN}/oauth2/auth
+      ingressClassName: ""
+      hosts:
+        - host: pg-ui.${DOMAIN}
+          paths: ["/"]
+      tls:
+       - secretName: pg-ui-tls
+         hosts:
+           - pg-ui.${DOMAIN}
+    extraEnvs:
+      # Exemple of settings to make snapshot view working in the ui when using minio
+       - name: WALE_S3_ENDPOINT
+         value: http+path://minio.minio:9000
+       - name: AWS_ENDPOINT
+         value: http://minio.minio:9000
+       - name: SPILO_S3_BACKUP_PREFIX
+         value: spilo/
+       - name: AWS_ACCESS_KEY_ID
+         valueFrom:
+           secretKeyRef:
+             name: postgres-operator-ui
+             key: AWS_ACCESS_KEY_ID
+       - name: AWS_SECRET_ACCESS_KEY
+         valueFrom:
+           secretKeyRef:
+             name: postgres-operator-ui
+             key: AWS_SECRET_ACCESS_KEY
+       - name: AWS_DEFAULT_REGION
+         value: minio
+       - name: SPILO_S3_BACKUP_BUCKET
+         value: postgres-operator

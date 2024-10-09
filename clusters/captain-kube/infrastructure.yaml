@@ -200,7 +200,6 @@ spec:
     name: flux-system
   dependsOn:
     - name: prometheus-operator-crds
-    - name: minio
   path: ./infrastructure/captain-kube/postgres-operator
   prune: true
   healthChecks:
@@ -208,34 +207,34 @@ spec:
       kind: HelmRelease
       name: postgres-operator
       namespace: postgres-operator
-# ---
+---
 # postgres-operator-ui
-# apiVersion: kustomize.toolkit.fluxcd.io/v1
-# kind: Kustomization
-# metadata:
-#   name: postgres-operator-ui
-#   namespace: flux-system
-# spec:
-#   timeout: 5m0s
-#   interval: 10m0s
-#   sourceRef:
-#     kind: GitRepository
-#     name: flux-system
-#   dependsOn:
-#     - name: prometheus-operator-crds
-#     - name: postgres-operator
-#   path: ./infrastructure/captain-kube/postgres-operator-ui
-#   prune: true
-#   healthChecks:
-#     - apiVersion: helm.toolkit.fluxcd.io/v2
-#       kind: HelmRelease
-#       name: postgres-operator-ui
-#       namespace: postgres-operator-ui
-#   postBuild:
-#     substituteFrom:
-#       - kind: Secret
-#         name: cluster-secrets
-#   decryption:
-#     provider: sops
-#     secretRef:
-#       name: sops-age
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: postgres-operator-ui
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: prometheus-operator-crds
+    - name: postgres-operator
+  path: ./infrastructure/captain-kube/postgres-operator-ui
+  prune: true
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: postgres-operator-ui
+      namespace: postgres-operator-ui
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
