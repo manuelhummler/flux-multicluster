@@ -256,11 +256,6 @@ spec:
     - name: postgres-operator
   path: ./infrastructure/captain-kube/postgres-cluster
   prune: true
-  healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2
-      kind: HelmRelease
-      name: postgres-cluster
-      namespace: postgres-cluster
   decryption:
     provider: sops
     secretRef:
