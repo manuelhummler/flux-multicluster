@@ -1,0 +1,65 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  chart:
+    spec:
+      chart: keycloak
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: bitnami
+        namespace: flux-system
+      version: v1.16.0
+  interval: 1m0s
+  values:
+    auth:
+      adminUser: hummli
+      existingSecret: keycloak-secret
+      passwordSecretKey: keycloak-password
+    production: true
+    proxyHeaders: "forwarded"
+    ingress:
+      enabled: true
+      ingressClassName: "nginx"
+      hostname: auth.${DOMAIN}
+      hostnameStrict: true
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-prod
+      tls: true
+    postgresql:
+      enabled: false
+    externalDatabase:
+      host: "postgres-cluster.postgres-cluster"
+      port: 5432
+      database: keycloak
+      existingSecret: "keycloak.keycloak.postgres-cluster.credentials.postgresql.acid.zalan.do"
+      existingSecretUserKey: "username"
+      existingSecretPasswordKey: "password"
+    # configure metrics endpoints for keycloak
+    extraContainerPorts:
+      - name: metrics
+        containerPort: 9000
+        protocol: TCP
+    extraEnvVars:
+      - name: KC_METRICS_ENABLED
+        value: "true"
+    # enable metrics
+    metrics:
+      enabled: true
+      service:
+        extraPorts:
+          - name: metrics
+            port: 9000
+            protocol: TCP
+            targetPort: metrics
+      serviceMonitor:
+        enabled: true
+        port: metrics
+        endpoints:
+          - path: '{{ include "keycloak.httpPath" . }}metrics'
+      prometheusRule:
+        enabled: true
+        namespace: keycloak
