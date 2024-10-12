@@ -27,7 +27,9 @@ spec:
   users:
     # namespace.name: roles
     keycloak.keycloak: []
+    vaultwarden.vaultwarden: []
   databases:
     # name: owner (namespace.name)
     # namespace notation is part of user name
     keycloak: keycloak.keycloak
+    vaultwarden: vaultwarden.vaultwarden
