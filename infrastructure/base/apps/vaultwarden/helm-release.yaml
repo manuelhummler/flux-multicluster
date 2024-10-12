@@ -15,7 +15,7 @@ spec:
       version: v0.29.1
   interval: 1m0s
   values:
-    domain: vault.${DOMAIN}
+    domain: https://vault.${DOMAIN}
     database:
       type: postgresql
       existingSecret: vaultwarden-secret
