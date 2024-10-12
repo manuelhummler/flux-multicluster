@@ -1,0 +1,88 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: vaultwarden
+  namespace: vaultwarden
+spec:
+  postRenderers:
+    - kustomize:
+        patches:
+          # patch mssql to only run on nodes with kernel version 5
+          - patch: |-
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: vaultwarden
+                namespace: vaultwarden
+              spec:
+                template:
+                  spec:
+                    containers:
+                       - name: vaultwarden
+                         envFrom:
+                           - secretRef:
+                               name: vaultwarden.vaultwarden.postgres-cluster.credentials.postgresql.acid.zalan.do
+  chart:
+    spec:
+      chart: vaultwarden
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: vaultwarden
+        namespace: flux-system
+      version: v0.29.1
+  interval: 1m0s
+  values:
+    domain: vault.${DOMAIN}
+    database:
+      type: postgresql
+      uriOverride: "postgresql://${username}:${password}@postgres-cluster.postgres-cluster:5432/vaultwarden"
+    ingress:
+      enabled: true
+      class: "nginx"
+      tlsSecret: vaultwarden-tls
+      hostname: vault.${DOMAIN}
+      additionalAnnotations:
+        cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    signupsAllowed: false
+    timeZone: "Europe/Berlin"
+    # shutdown instance first and then start new version
+    strategy:
+      type: Recreate
+    podSecurityContext:
+      fsGroup: 1001
+      supplementalGroups:
+        - 1001
+    securityContext:
+      allowPrivilegeEscalation: false
+      privileged: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsGroup: 1001
+      runAsUser: 1001
+      seccompProfile:
+        type: RuntimeDefault
+      capabilities:
+        drop:
+          - ALL
+    resources:
+      limits:
+        cpu: 300m
+        memory: 1Gi
+      requests:
+        cpu: 50m
+        memory: 256Mi
+    data:
+      name: "vaultwarden-data"
+      size: "15Gi"
+      class: "longhorn"
+      path: "/data"
+      keepPvc: true
+      accessMode: "ReadWriteOnce"
+    attachments:
+      name: "vaultwarden-files"
+      size: "10Gi"
+      class: "longhorn"
+      path: "/files"
+      keepPvc: true
+      accessMode: "ReadWriteOnce"
