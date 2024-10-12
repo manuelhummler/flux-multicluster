@@ -27,3 +27,15 @@ spec:
       tls: true
     persistence:
       storageClass: "longhorn"
+    podSecurityContext:
+      enabled: true
+      fsGroup: 1001
+      seccompProfile:
+        type: "RuntimeDefault"
+    containerSecurityContext:
+      enabled: true
+      runAsUser: 1001
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
