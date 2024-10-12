@@ -36,7 +36,7 @@ spec:
     domain: vault.${DOMAIN}
     database:
       type: postgresql
-      uriOverride: "postgresql://${username}:${password}@postgres-cluster.postgres-cluster:5432/vaultwarden"
+      uriOverride: "postgresql://$${username}:$${password}@postgres-cluster.postgres-cluster:5432/vaultwarden"
     ingress:
       enabled: true
       class: "nginx"
