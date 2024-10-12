@@ -69,3 +69,6 @@ spec:
       path: "/files"
       keepPvc: true
       accessMode: "ReadWriteOnce"
+    adminToken:
+      existingSecret: vaultwarden-secret
+      existingSecretKey: ADMIN_TOKEN
