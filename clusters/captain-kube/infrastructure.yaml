@@ -369,7 +369,7 @@ spec:
     name: flux-system
   dependsOn:
     - name: prometheus-operator-crds
-    - name: minio
+    - name: cert-manager
   path: ./infrastructure/captain-kube/mariadb-operator
   prune: true
   healthChecks:
@@ -377,3 +377,29 @@ spec:
       kind: HelmRelease
       name: mariadb-operator
       namespace: mariadb-operator
+---
+# mariadb
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: mariadb
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: prometheus-operator-crds
+    - name: cert-manager
+  path: ./infrastructure/captain-kube/mariadb-operator
+  prune: true
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
