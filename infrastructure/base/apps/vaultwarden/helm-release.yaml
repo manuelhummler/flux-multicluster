@@ -25,6 +25,8 @@ spec:
       class: "nginx"
       tlsSecret: vaultwarden-tls
       hostname: vault.${DOMAIN}
+      additionalHostnames:
+        - vault.${DOMAIN_2}
       additionalAnnotations:
         cert-manager.io/cluster-issuer: "letsencrypt-prod"
     signupsAllowed: false
