@@ -26,3 +26,5 @@ spec:
         enabled: true
     securityContext:
       runAsNonRoot: true
+      capabilities:
+        add: ["SYS_RESOURCE"]
