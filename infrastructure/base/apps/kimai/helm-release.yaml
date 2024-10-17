@@ -18,6 +18,16 @@ spec:
     kimaiAdminEmail: ${EMAIL}
     existingSecret: kimai-secret
     ingress:
+      extraHosts:
+        - name: time.${DOMAIN_2}
+          path: /
+        - name: time.${DOMAIN_3}
+          path: /
+      extraTls:
+        - hosts:
+          - time.${DOMAIN_2}
+          - time.${DOMAIN_3}
+          secretName: kimai-extra-tls
       enabled: true
       ingressClassName: "nginx"
       hostname: kimai.${DOMAIN}
@@ -39,9 +49,18 @@ spec:
       allowPrivilegeEscalation: false
       capabilities:
         drop: ["ALL"]
-        add: [ "SYS_RESOURCE" ]
     mariadb:
       enabled: false
-#    externalDatabase:
-#      host: mariadb.mariadb-galera
-#      existingSecret: kimai-mariadb
+    updateStrategy:
+      type: Recreate
+    # add custom volume for cache and logs
+    extraVolumes:
+      - name: cache
+        emptyDir: { }
+      - name: logs
+        emptyDir: { }
+    extraVolumeMounts:
+      - name: cache
+        mountPath: /opt/kimai/var/cache/prod
+      - name: logs
+        mountPath: /opt/kimai/var/log
