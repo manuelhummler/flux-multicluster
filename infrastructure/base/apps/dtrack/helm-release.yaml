@@ -25,7 +25,6 @@ spec:
           secretName: dtrack-tls
       annotations:
         cert-manager.io/cluster-issuer: letsencrypt-prod
-
     frontend:
       extraEnv:
         - name: "OIDC_CLIENT_ID"
@@ -55,7 +54,7 @@ spec:
               name: dtrack.dtrack.postgres-cluster.credentials.postgresql.acid.zalan.do
         # oidc
         - name: "ALPINE_OIDC_ENABLED"
-          value: true
+          value: 'true'
         - name: "ALPINE_OIDC_CLIENT_ID"
           value: dtrack
         - name: "ALPINE_OIDC_ISSUER"
@@ -63,11 +62,11 @@ spec:
         - name: "ALPINE_OIDC_USERNAME_CLAIM"
           value: preferred_username
         - name: "ALPINE_OIDC_USER_PROVISIONING"
-          value: true
+          value: 'true'
         - name: "ALPINE_OIDC_TEAMS_CLAIM"
           value: groups
         - name: "ALPINE_OIDC_TEAMS_SYNCHRONIZATION"
-          value: true
+          value: 'true'
         - name: "ALPINE_OIDC_USERNAME_CLAIM"
           value: preferred_username
 ---
