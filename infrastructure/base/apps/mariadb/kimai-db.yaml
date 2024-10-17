@@ -7,6 +7,7 @@ metadata:
 spec:
   mariaDbRef:
     name: mariadb-galera
+    namespace: mariadb
   characterSet: utf8
   collate: utf8_general_ci
 ---
@@ -19,6 +20,7 @@ metadata:
 spec:
   mariaDbRef:
     name: mariadb-galera
+    namespace: mariadb
   passwordSecretKeyRef:
     name: kimai-mariadb
     key: mariadb-password
