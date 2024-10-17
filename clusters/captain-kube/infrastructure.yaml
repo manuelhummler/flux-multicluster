@@ -392,14 +392,11 @@ spec:
     name: flux-system
   dependsOn:
     - name: prometheus-operator-crds
-    - name: cert-manager
+    - name: minio
+    - name: mariadb-operator
   path: ./infrastructure/captain-kube/mariadb-operator
   prune: true
   decryption:
     provider: sops
     secretRef:
       name: sops-age
-  postBuild:
-    substituteFrom:
-      - kind: Secret
-        name: cluster-secrets
