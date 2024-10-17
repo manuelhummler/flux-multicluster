@@ -21,7 +21,7 @@ spec:
     name: mariadb-galera
   passwordSecretKeyRef:
     name: kimai-secret
-    key: databasePassword
+    key: mariadb-password
   maxUserConnections: 20
 ---
 # grant

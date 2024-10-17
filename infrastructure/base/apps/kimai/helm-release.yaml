@@ -40,23 +40,7 @@ spec:
       capabilities:
         drop: ["ALL"]
     mariadb:
-      primary:
-        podSecurityContext:
-          enabled: true
-          fsGroupChangePolicy: Always
-          sysctls: []
-          supplementalGroups: []
-          fsGroup: 1001
-        containerSecurityContext:
-          enabled: true
-          seLinuxOptions: {}
-          runAsUser: 1001
-          runAsGroup: 1001
-          runAsNonRoot: true
-          privileged: false
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop: ["ALL"]
-          seccompProfile:
-            type: "RuntimeDefault"
+      enabled: false
+    externalDatabase:
+      host: mariadb.mariadb-galera
+      existingSecret: kimai-mariadb
