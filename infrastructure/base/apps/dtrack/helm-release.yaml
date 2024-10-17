@@ -40,7 +40,7 @@ spec:
           valueFrom:
             secretKeyRef:
               key: username
-              name: keycloak.keycloak.postgres-cluster.credentials.postgresql.acid.zalan.do
+              name: dtrack.dtrack.postgres-cluster.credentials.postgresql.acid.zalan.do
         - name: "ALPINE_DATABASE_PASSWORD"
           valueFrom:
             secretKeyRef:
