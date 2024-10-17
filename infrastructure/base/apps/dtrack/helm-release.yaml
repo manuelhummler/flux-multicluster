@@ -25,6 +25,13 @@ spec:
           secretName: dtrack-tls
       annotations:
         cert-manager.io/cluster-issuer: letsencrypt-prod
+
+    frontend:
+      extraEnv:
+        - name: "OIDC_CLIENT_ID"
+          value: dtrack
+        - name: "OIDC_ISSUER"
+          value: https://auth.${DOMAIN}/realms/hopps
     apiServer:
       persistentVolume:
         className: "longhorn"
@@ -46,6 +53,23 @@ spec:
             secretKeyRef:
               key: password
               name: dtrack.dtrack.postgres-cluster.credentials.postgresql.acid.zalan.do
+        # oidc
+        - name: "ALPINE_OIDC_ENABLED"
+          value: true
+        - name: "ALPINE_OIDC_CLIENT_ID"
+          value: dtrack
+        - name: "ALPINE_OIDC_ISSUER"
+          value: https://auth.${DOMAIN}/realms/hopps
+        - name: "ALPINE_OIDC_USERNAME_CLAIM"
+          value: preferred_username
+        - name: "ALPINE_OIDC_USER_PROVISIONING"
+          value: true
+        - name: "ALPINE_OIDC_TEAMS_CLAIM"
+          value: groups
+        - name: "ALPINE_OIDC_TEAMS_SYNCHRONIZATION"
+          value: true
+        - name: "ALPINE_OIDC_USERNAME_CLAIM"
+          value: preferred_username
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
