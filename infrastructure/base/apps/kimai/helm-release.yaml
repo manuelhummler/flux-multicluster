@@ -26,8 +26,10 @@ spec:
       extraTls:
         - hosts:
           - time.${DOMAIN_2}
+          secretName: kimai-app-tls
+        - hosts:
           - time.${DOMAIN_3}
-          secretName: kimai-extra-tls
+          - secretName: kimai-cloud-tls
       enabled: true
       ingressClassName: "nginx"
       hostname: kimai.${DOMAIN}
