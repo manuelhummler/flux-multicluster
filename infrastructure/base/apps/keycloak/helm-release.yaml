@@ -29,6 +29,18 @@ spec:
       annotations:
         cert-manager.io/cluster-issuer: letsencrypt-prod
       tls: true
+      extraHosts:
+        - name: auth.${DOMAIN_2}
+          path: /
+        - name: auth.${DOMAIN_3}
+          path: /
+      extraTls:
+        - hosts:
+            - auth.${DOMAIN_2}
+          secretName: keycloak-app-tls
+        - hosts:
+            - auth.${DOMAIN_3}
+          secretName: keycloak-cloud-tls
     postgresql:
       enabled: false
     externalDatabase:
