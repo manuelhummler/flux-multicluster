@@ -46,3 +46,69 @@ spec:
             secretKeyRef:
               key: password
               name: dtrack.dtrack.postgres-cluster.credentials.postgresql.acid.zalan.do
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  name: dtrack-dependency-track-cloud
+  namespace: dtrack
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: dtrack.${DOMAIN_2}
+      http:
+        paths:
+          - backend:
+              service:
+                name: dtrack-dependency-track-api-server
+                port:
+                  name: web
+            path: /api
+            pathType: Prefix
+          - backend:
+              service:
+                name: dtrack-dependency-track-api-server
+                port:
+                  name: web
+            path: /health
+            pathType: Prefix
+          - backend:
+              service:
+                name: dtrack-dependency-track-frontend
+                port:
+                  name: web
+            path: /
+            pathType: Prefix
+    - host: dtrack.${DOMAIN_3}
+      http:
+        paths:
+          - backend:
+              service:
+                name: dtrack-dependency-track-api-server
+                port:
+                  name: web
+            path: /api
+            pathType: Prefix
+          - backend:
+              service:
+                name: dtrack-dependency-track-api-server
+                port:
+                  name: web
+            path: /health
+            pathType: Prefix
+          - backend:
+              service:
+                name: dtrack-dependency-track-frontend
+                port:
+                  name: web
+            path: /
+            pathType: Prefix
+  tls:
+    - hosts:
+        - dtrack.${DOMAIN_2}
+      secretName: dtrack-app-tls
+    - hosts:
+        - dtrack.${DOMAIN_3}
+      secretName: dtrack-cloud-tls
