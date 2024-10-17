@@ -29,7 +29,7 @@ spec:
           secretName: kimai-app-tls
         - hosts:
           - time.${DOMAIN_3}
-          - secretName: kimai-cloud-tls
+          secretName: kimai-cloud-tls
       enabled: true
       ingressClassName: "nginx"
       hostname: kimai.${DOMAIN}
