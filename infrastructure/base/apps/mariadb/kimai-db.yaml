@@ -22,7 +22,7 @@ spec:
     name: mariadb-galera
     namespace: mariadb
   passwordSecretKeyRef:
-    name: kimai-mariadb
+    name: kimai-secret
     key: mariadb-password
   maxUserConnections: 20
 ---
