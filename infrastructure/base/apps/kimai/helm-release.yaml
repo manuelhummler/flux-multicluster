@@ -41,6 +41,6 @@ spec:
         drop: ["ALL"]
     mariadb:
       enabled: false
-    externalDatabase:
-      host: mariadb.mariadb-galera
-      existingSecret: kimai-mariadb
+#    externalDatabase:
+#      host: mariadb.mariadb-galera
+#      existingSecret: kimai-mariadb
