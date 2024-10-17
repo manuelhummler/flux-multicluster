@@ -1,0 +1,48 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: dtrack
+  namespace: dtrack
+spec:
+  chart:
+    spec:
+      chart: dependency-track
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: dtrack
+        namespace: flux-system
+      version: 0.21.0
+  interval: 1m0s
+  values:
+    ingress:
+      enabled: true
+      hostname: dtrack.${DOMAIN}
+      ingressClassName: nginx
+      tls:
+        - hosts:
+          - dtrack.${DOMAIN}
+          secretName: dtrack-tls
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-prod
+    apiServer:
+      persistentVolume:
+        className: "longhorn"
+        enabled: true
+      extraEnv:
+        - name: "ALPINE_DATABASE_MODE"
+          value: external
+        - name: "ALPINE_DATABASE_URL"
+          value: jdbc:postgresql://postgres-cluster.postgres-cluster:5432/dtrack
+        - name: "ALPINE_DATABASE_DRIVER"
+          value: org.postgresql.Driver
+        - name: "ALPINE_DATABASE_USERNAME"
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: keycloak.keycloak.postgres-cluster.credentials.postgresql.acid.zalan.do
+        - name: "ALPINE_DATABASE_PASSWORD"
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: dtrack.dtrack.postgres-cluster.credentials.postgresql.acid.zalan.do
