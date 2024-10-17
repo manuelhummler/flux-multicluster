@@ -69,6 +69,8 @@ spec:
           value: "true"
         - name: "ALPINE_OIDC_USERNAME_CLAIM"
           value: preferred_username
+        - name: "ALPINE_OIDC_TEAMS_DEFAULT"
+          value: "Portfolio Managers"
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
