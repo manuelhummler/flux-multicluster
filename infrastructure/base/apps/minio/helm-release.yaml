@@ -12,7 +12,7 @@ spec:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
-      version: 14.7.15
+      version: 14.8.0
   interval: 1m0s
   values:
     global:
