@@ -112,6 +112,13 @@ spec:
       toPorts:
         - ports:
             - port: "9000"
+    - fromEndpoints:
+        - matchLabels:
+            io.cilium.k8s.policy.serviceaccount: backup
+            io.kubernetes.pod.namespace: mariadb
+      toPorts:
+        - ports:
+            - port: "9000"
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
