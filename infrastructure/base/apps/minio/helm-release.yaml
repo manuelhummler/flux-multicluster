@@ -29,7 +29,7 @@ spec:
       hostname: minio.${DOMAIN}
       tls: true
     apiIngress:
-      enabled: false
+      enabled: true
       annotations:
         cert-manager.io/cluster-issuer: letsencrypt-prod
         # allow files with max size of 2GB
