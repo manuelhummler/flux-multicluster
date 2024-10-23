@@ -68,3 +68,5 @@ spec:
         mountPath: /opt/kimai/var/cache
       - name: logs
         mountPath: /opt/kimai/var/log
+    service:
+      type: ClusterIP
