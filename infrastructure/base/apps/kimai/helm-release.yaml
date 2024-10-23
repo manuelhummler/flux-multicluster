@@ -65,6 +65,6 @@ spec:
         emptyDir: { }
     extraVolumeMounts:
       - name: cache
-        mountPath: /opt/kimai/var/cache/prod
+        mountPath: /opt/kimai/var/cache
       - name: logs
         mountPath: /opt/kimai/var/log
