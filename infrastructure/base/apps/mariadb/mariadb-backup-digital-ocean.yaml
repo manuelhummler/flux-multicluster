@@ -15,7 +15,6 @@ spec:
       bucket: mariadb-operator
       endpoint: fra1.digitaloceanspaces.com
       region: fra1
-      prefix: hopps
       accessKeyIdSecretKeyRef:
         name: mariadb-secret
         key: digital-ocean-access-key-id
