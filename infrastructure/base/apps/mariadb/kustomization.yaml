@@ -4,5 +4,6 @@ resources:
   - namespace.yaml
   - mariadb.yaml
   - mariadb-backup.yaml
+  - mariadb-backup-digital-ocean.yaml
   - maxscale.yaml
   - kimai-db.yaml
