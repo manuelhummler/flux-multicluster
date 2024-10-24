@@ -14,7 +14,7 @@ spec:
     s3:
       bucket: mariadb-operator
       prefix: mariadb
-      endpoint: https://hopps.fra1.digitaloceanspaces.com:443
+      endpoint: hopps.fra1.digitaloceanspaces.com:443
       region: captain-kube
       accessKeyIdSecretKeyRef:
         name: mariadb-secret
@@ -23,4 +23,4 @@ spec:
         name: mariadb-secret
         key: digital-ocean-secret-access-key
       tls:
-        enabled: false
+        enabled: true
