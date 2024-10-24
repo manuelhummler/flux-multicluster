@@ -7,7 +7,7 @@ spec:
   mariaDbRef:
     name: mariadb-galera
   schedule:
-    cron: "*/1 * * * *"
+    cron: "30 2 * * *"
     suspend: false
   maxRetention: 720h # 30 days
   storage:
@@ -15,6 +15,7 @@ spec:
       bucket: hopps
       endpoint: fra1.digitaloceanspaces.com
       region: fra1
+      prefix: hopps-cloud-mariadb
       accessKeyIdSecretKeyRef:
         name: mariadb-secret
         key: digital-ocean-access-key-id
