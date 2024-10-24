@@ -12,7 +12,7 @@ spec:
   maxRetention: 720h # 30 days
   storage:
     s3:
-      bucket: mariadb-operator
+      bucket: hopps
       endpoint: fra1.digitaloceanspaces.com
       region: fra1
       accessKeyIdSecretKeyRef:
