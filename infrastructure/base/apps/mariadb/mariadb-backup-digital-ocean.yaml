@@ -13,7 +13,7 @@ spec:
   storage:
     s3:
       bucket: mariadb-operator
-      endpoint: digitaloceanspaces.com
+      endpoint: fra1.digitaloceanspaces.com
       region: fra1
       prefix: hopps
       accessKeyIdSecretKeyRef:
