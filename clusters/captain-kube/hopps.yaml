@@ -1,0 +1,36 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: hopps
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  ref:
+    branch: saas-installation
+  secretRef:
+    name: flux-system
+  url: ssh://git@github.com/hopps-app/hopps
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: longhorn
+    - name: postgres-operator
+  interval: 10m0s
+  path: ./kubernetes/hopps/overlays/dev
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: hopps
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-hopps-age
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
