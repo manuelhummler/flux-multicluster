@@ -35,6 +35,13 @@ spec:
       persistentVolume:
         className: "longhorn"
         enabled: true
+      resources:
+        requests:
+          cpu: 500m
+          memory: 5Gi
+        limits:
+          cpu: null
+          memory: 5Gi
       extraEnv:
         - name: "ALPINE_DATABASE_MODE"
           value: external
