@@ -20,6 +20,14 @@ spec:
 
   galera:
     enabled: true
+    recovery:
+      enabled: true
+      minClusterSize: 1
+      clusterMonitorInterval: 10s
+      clusterHealthyTimeout: 30s
+      clusterBootstrapTimeout: 10m
+      podRecoveryTimeout: 5m
+      podSyncTimeout: 5m
 
   myCnf: |
     [mariadb]
