@@ -14,7 +14,7 @@ spec:
     generate: true
 
   storage:
-    size: 1Gi
+    size: 10Gi
 
   replicas: 3
 
