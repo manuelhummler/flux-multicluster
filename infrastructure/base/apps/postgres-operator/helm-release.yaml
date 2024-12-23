@@ -12,7 +12,7 @@ spec:
         kind: HelmRepository
         name: postgres-operator
         namespace: flux-system
-      version: v1.13.0
+      version: 1.14.0
   interval: 1m0s
   values:
     securityContext:
