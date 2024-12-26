@@ -1,0 +1,74 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: oauth2-proxy
+spec:
+  chart:
+    spec:
+      chart: oauth2-proxy
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: oauth2-proxy
+      version: 7.8.3
+  interval: 1m0s
+  values:
+    config:
+      cookieName: "oauth2-proxy"
+      existingConfig: oauth2-proxy
+      # kics-scan ignore-line
+      existingSecret: oauth2-proxy
+    resources:
+      limits:
+        cpu: 100m
+        memory: 300Mi
+      requests:
+        cpu: 100m
+        memory: 300Mi
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+    ingress:
+      enabled: true
+      className: nginx
+      annotations:
+        cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      hosts:
+        - ${OAUTH_PROXY_DOMAIN}
+      tls:
+        - secretName: oauth2-proxy-tls
+          hosts:
+            - ${OAUTH_PROXY_DOMAIN}
+    sessionStorage:
+      type: redis
+      redis:
+        existingSecret: oauth2-proxy-redis
+    # Sub-Chart configuration
+    redis:
+      enabled: true
+      # configure storage
+      global:
+        storageClass: "longhorn"
+      # disable networkPolicy as CiliumNetworkPolicy is used
+      networkPolicy:
+         enabled: false
+      auth:
+        existingSecret: oauth2-proxy-redis
+        existingSecretPasswordKey: redis-password
+      master:
+        resources:
+          limits:
+            cpu: 300m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+      replica:
+        resources:
+          limits:
+            cpu: 300m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
