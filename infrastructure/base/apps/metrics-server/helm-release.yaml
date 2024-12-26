@@ -1,0 +1,38 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: metrics-server
+spec:
+  chart:
+    spec:
+      chart: metrics-server
+      sourceRef:
+        kind: HelmRepository
+        name: metrics-server
+      version: 3.12.2
+  interval: 30m
+  values:
+    metrics:
+      enabled: true
+    serviceMonitor:
+      enabled: true
+    resources:
+      requests:
+        cpu: 100m
+        memory: 200Mi
+      limits:
+        cpu: 100m
+        memory: 200Mi
+    # show metrics server in cluster-info
+    service:
+      labels:
+        kubernetes.io/cluster-service: "true"
+        kubernetes.io/name: "Metrics-server"
+    # disable tls check for now
+    args:
+      - --kubelet-insecure-tls=true
+    # security hardening
+    #apiService:
+    #  insecureSkipTLSVerify: false
+    #tls:
+    #  type: cert-manager
