@@ -99,23 +99,6 @@ spec:
         - ports:
             - port: "3100"
 ---
-# allow ingress from prometheus to kube-state-metrics
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: allow-ingress-from-prometheus-to-kube-state-metrics
-spec:
-  endpointSelector:
-    matchLabels:
-      io.cilium.k8s.policy.serviceaccount: kube-prometheus-stack-kube-state-metrics
-  ingress:
-    - fromEndpoints:
-        - matchLabels:
-            io.cilium.k8s.policy.serviceaccount: kube-prometheus-stack-prometheus
-      toPorts:
-        - ports:
-            - port: "8080"
----
 # allow ingress from kube-apiserver to promtail
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
