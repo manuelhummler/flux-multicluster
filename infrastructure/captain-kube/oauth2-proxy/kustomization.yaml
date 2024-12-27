@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: oauth2-proxy
+resources:
+  - ../../base/apps/oauth2-proxy
+  - namespace.yaml
+# create all needed secrets with fix name
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: oauth2-proxy
+    files:
+      - secrets/oauth2_proxy.cfg
+secretGenerator:
+  - name: oauth2-proxy
+    envs:
+      - secrets/oauth2-proxy-secret-encrypted.env
+  - name: oauth2-proxy-redis
+    envs:
+      - secrets/oauth2-proxy-redis-secret-encrypted.env
