@@ -20,7 +20,7 @@ spec:
       existingSecret: keycloak-secret
       passwordSecretKey: keycloak-password
     production: true
-    proxyHeaders: "forwarded"
+    proxyHeaders: "xforwarded"
     ingress:
       enabled: true
       ingressClassName: "nginx"
