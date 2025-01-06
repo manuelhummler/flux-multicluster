@@ -39,17 +39,16 @@ spec:
     protocolHttp: false
     ingress:
       enabled: true
-      className: "nginx"
+      ingressClassName: "nginx"
       annotations:
         cert-manager.io/cluster-issuer: letsencrypt-prod
       # authenticate with oauth2-proxy
       nginx.ingress.kubernetes.io/auth-response-headers: x-auth-request-user, x-auth-request-email
       nginx.ingress.kubernetes.io/auth-signin: https://${OAUTH_PROXY_DOMAIN}/oauth2/start?rd=$scheme://$host$request_uri
       nginx.ingress.kubernetes.io/auth-url: https://${OAUTH_PROXY_DOMAIN}/oauth2/auth
-      hostname: ${DOMAIN}
+      hosts:
+        - ${DOMAIN}
       tls:
-        - hosts:
-            - ${DOMAIN}
-          secretName: kubernetes-dashboard-tls
+        secretName: kubernetes-dashboard-tls
       paths:
         - /
