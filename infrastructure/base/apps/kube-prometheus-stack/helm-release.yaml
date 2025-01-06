@@ -36,11 +36,11 @@ spec:
           nginx.ingress.kubernetes.io/auth-signin: https://${OAUTH_PROXY_DOMAIN}/oauth2/start?rd=$scheme://$host$request_uri
           nginx.ingress.kubernetes.io/auth-url: https://${OAUTH_PROXY_DOMAIN}/oauth2/auth
         hosts:
-          - alertmanager.${DOMAIN_2}
+          - alertmanager.${DOMAIN}
         ingressClassName: nginx
         tls:
           - hosts:
-              - alertmanager.${DOMAIN_2}
+              - alertmanager.${DOMAIN}
             secretName: alertmanager-tls
     grafana:
       #image:
@@ -54,8 +54,8 @@ spec:
       # configure grafana.ini for oauth2 authentication with Keycloak
       grafana.ini:
         server:
-          domain: grafana.${DOMAIN_2}
-          root_url: https://grafana.${DOMAIN_2}
+          domain: grafana.${DOMAIN}
+          root_url: https://grafana.${DOMAIN}
         # disable analytics
         analytics:
           enabled: false
@@ -77,7 +77,7 @@ spec:
             auth_url: $__file{/etc/secrets/auth_generic_oauth/keycloak_host}/realms/$__file{/etc/secrets/auth_generic_oauth/keycloak_realm}/protocol/openid-connect/auth
             token_url: $__file{/etc/secrets/auth_generic_oauth/keycloak_host}/realms/$__file{/etc/secrets/auth_generic_oauth/keycloak_realm}/protocol/openid-connect/token
             api_url: $__file{/etc/secrets/auth_generic_oauth/keycloak_host}/realms/$__file{/etc/secrets/auth_generic_oauth/keycloak_realm}/protocol/openid-connect/userinfo
-            signout_redirect_url: $__file{/etc/secrets/auth_generic_oauth/keycloak_host}/realms/$__file{/etc/secrets/auth_generic_oauth/keycloak_realm}/protocol/openid-connect/logout?redirect_uri=https%3A%2F%2Fgrafana.${DOMAIN_2}%2Flogin
+            signout_redirect_url: $__file{/etc/secrets/auth_generic_oauth/keycloak_host}/realms/$__file{/etc/secrets/auth_generic_oauth/keycloak_realm}/protocol/openid-connect/logout?redirect_uri=https%3A%2F%2Fgrafana.${DOMAIN}%2Flogin
             role_attribute_path: contains(roles[*], 'grafana-admin') && 'Admin' || contains(roles[*], 'grafana-editor') && 'Editor' || contains(roles[*], 'grafana-viewer') && 'Viewer'
       # Configure Secrets Mounts, to mount Keycloak secrets securely
       extraSecretMounts:
@@ -184,11 +184,11 @@ spec:
         annotations:
           cert-manager.io/cluster-issuer: letsencrypt-prod
         hosts:
-          - grafana.${DOMAIN_2}
+          - grafana.${DOMAIN}
         ingressClassName: nginx
         tls:
           - hosts:
-              - grafana.${DOMAIN_2}
+              - grafana.${DOMAIN}
             secretName: grafana-tls
     prometheus:
       ingress:
@@ -200,11 +200,11 @@ spec:
           nginx.ingress.kubernetes.io/auth-signin: https://${OAUTH_PROXY_DOMAIN}/oauth2/start?rd=$scheme://$host$request_uri
           nginx.ingress.kubernetes.io/auth-url: https://${OAUTH_PROXY_DOMAIN}/oauth2/auth
         hosts:
-          - prometheus.${DOMAIN_2}
+          - prometheus.${DOMAIN}
         ingressClassName: nginx
         tls:
           - hosts:
-              - prometheus.${DOMAIN_2}
+              - prometheus.${DOMAIN}
             secretName: prometheus-tls
       prometheusSpec:
         retention: 30d
