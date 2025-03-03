@@ -74,3 +74,12 @@ spec:
     adminToken:
       existingSecret: vaultwarden-secret
       existingSecretKey: ADMIN_TOKEN
+    smtp:
+      host: smtp.sendgrid.net
+      from: hopps@op-paf.de
+      fromName: "Hopps Open Project"
+      existingSecret: vaultwarden-secret
+      username:
+        existingSecretKey: smtp_username
+      password:
+        existingSecretKey: smtp_password
