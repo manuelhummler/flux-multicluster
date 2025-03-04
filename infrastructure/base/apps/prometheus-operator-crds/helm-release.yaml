@@ -12,5 +12,5 @@ spec:
         kind: HelmRepository
         name: prometheus-community
         namespace: flux-system
-      version: 17.0.2
+      version: 18.0.1
   interval: 1m0s
