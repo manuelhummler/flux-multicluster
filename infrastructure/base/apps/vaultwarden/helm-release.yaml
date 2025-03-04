@@ -60,14 +60,14 @@ spec:
         memory: 256Mi
     data:
       name: "vaultwarden-data"
-      size: "15Gi"
+      size: "5Gi"
       class: "longhorn"
       path: "/data"
       keepPvc: true
       accessMode: "ReadWriteOnce"
     attachments:
       name: "vaultwarden-files"
-      size: "10Gi"
+      size: "5Gi"
       class: "longhorn"
       path: "/files"
       keepPvc: true
