@@ -64,3 +64,12 @@ roleRef:
   kind: Role
   name: full-access-role
   apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hopps-external-user
+  namespace: hopps-dev
+  annotations:
+    kubernetes.io/service-account.name: "hopps-external-user"
+type: kubernetes.io/service-account-token
