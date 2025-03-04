@@ -34,3 +34,33 @@ spec:
     substituteFrom:
       - kind: Secret
         name: cluster-secrets
+---
+# User Berechtigung für Hopps only
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hopps-external-user
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: full-access-role
+  namespace: hopps-dev
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: full-access-binding
+  namespace: hopps-dev
+subjects:
+  - kind: ServiceAccount
+    name: hopps-external-user
+    namespace: hopps-dev
+roleRef:
+  kind: Role
+  name: full-access-role
+  apiGroup: rbac.authorization.k8s.io
