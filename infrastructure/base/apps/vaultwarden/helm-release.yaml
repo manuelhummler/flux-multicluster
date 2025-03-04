@@ -58,20 +58,21 @@ spec:
       requests:
         cpu: 50m
         memory: 256Mi
-    data:
-      name: "vaultwarden-data"
-      size: "5Gi"
-      class: "longhorn"
-      path: "/data"
-      keepPvc: true
-      accessMode: "ReadWriteOnce"
-    attachments:
-      name: "vaultwarden-files"
-      size: "5Gi"
-      class: "longhorn"
-      path: "/files"
-      keepPvc: true
-      accessMode: "ReadWriteOnce"
+    storage:
+      data:
+        name: "vaultwarden-data"
+        size: "5Gi"
+        class: "longhorn"
+        path: "/data"
+        keepPvc: true
+        accessMode: "ReadWriteOnce"
+      attachments:
+        name: "vaultwarden-files"
+        size: "5Gi"
+        class: "longhorn"
+        path: "/files"
+        keepPvc: true
+        accessMode: "ReadWriteOnce"
     adminToken:
       existingSecret: vaultwarden-secret
       existingSecretKey: ADMIN_TOKEN
