@@ -78,6 +78,8 @@ spec:
       existingSecretKey: ADMIN_TOKEN
     smtp:
       host: smtp.sendgrid.net
+      port: 587
+      authMechanism: 'Login'
       from: hopps@op-paf.de
       fromName: "Hopps Open Project"
       existingSecret: vaultwarden-secret
