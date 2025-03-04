@@ -15,6 +15,7 @@ spec:
       version: 0.31.6
   interval: 1m0s
   values:
+    resourceType: "Deployment"
     domain: https://vault.${DOMAIN}
     database:
       type: postgresql
