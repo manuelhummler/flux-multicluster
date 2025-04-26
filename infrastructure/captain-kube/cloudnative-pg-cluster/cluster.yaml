@@ -1,0 +1,62 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-cluster
+spec:
+  instances: 1
+  # Example of rolling update strategy:
+  # - unsupervised: automated update of the primary once all
+  #                 replicas have been upgraded (default)
+  # - supervised: requires manual supervision to perform
+  #               the switchover of the primary
+  primaryUpdateStrategy: unsupervised
+  # Require 10Gi of space
+  storage:
+    size: 10Gi
+    storageClass: longhorn-postgres-replica-storage
+  walStorage:
+    storageClass: longhorn-postgres-replica-storage
+    size: 10Gi
+  monitoring:
+    enablePodMonitor: true
+  #managed:
+    # Anlegen von Rollen
+    #roles:
+    #  - name: keycloak
+    #    login: true
+    #    comment: keycloak user
+    #    disablePassword: false
+    #    passwordSecret:
+    #      name: keycloak-secret
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      # path to S3 Bucket
+      destinationPath: s3://cloudnative-pg/
+      # url to S3 instance (e.g. minio)
+      endpointURL: http://minio.minio:9000
+      s3Credentials:
+        accessKeyId:
+          key: minio-key-id
+          name: minio-s3
+        secretAccessKey:
+          key: minio-access-key
+          name: minio-s3
+      wal:
+        compression: gzip
+      data:
+        compression: gzip
+        jobs: 2
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: db-scheduled-backup
+  labels:
+    app.kubernetes.io/component: database-backup
+spec:
+  cluster:
+    name: postgres-cluster
+  schedule: "0 0 23/12 * * *" # At 0 minutes past the hour, every 12 hours, starting at 11:00 PM
+  backupOwnerReference: none
+  immediate: false
