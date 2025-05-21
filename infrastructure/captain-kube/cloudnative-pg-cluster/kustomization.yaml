@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: cnpg-cluster
+resources:
+  - cluster.yaml
+  - namespace.yaml
+  - networkPolicy.yaml
+  - storageClass.yaml
+generatorOptions:
+  disableNameSuffixHash: true
+secretGenerator:
+  - name: minio-s3
+    # Kustomize will encode it to base64
+    envs:
+      - cluster-secret-encrypted.env
+  #- name: keycloak-secret
+  #  envs:
+  #    - secrets/keycloak-secret-encrypted.env
