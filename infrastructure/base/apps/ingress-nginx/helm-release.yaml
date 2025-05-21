@@ -32,6 +32,8 @@ spec:
         type: ClusterIP
       # Configure nginx
       config:
+        # allow server snippets
+        annotations-risk-level: Critical
         compute-full-forward-for: true
         use-forward-headers: true
         proxy-buffer-size: "16k"
