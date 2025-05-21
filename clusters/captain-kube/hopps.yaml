@@ -9,7 +9,7 @@ spec:
     branch: main
   secretRef:
     name: flux-system
-  url: ssh://git@github.com/hopps-app/hopps
+  url: ssh://git@github.com/hopps-app/hopps.cloud
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -21,7 +21,7 @@ spec:
     - name: longhorn
     - name: postgres-operator
   interval: 10m0s
-  path: ./kubernetes/hopps/overlays/dev
+  path: ./infrastructure/hopps/overlays/dev
   prune: true
   sourceRef:
     kind: GitRepository
