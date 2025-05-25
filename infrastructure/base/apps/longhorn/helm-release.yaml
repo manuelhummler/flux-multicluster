@@ -39,3 +39,10 @@ spec:
     defaultSettings:
       # set to true when number of worker nodes is < 3
       replicaSoftAntiAffinity: true
+      allowCollectingLonghornUsageMetrics: false
+      guaranteedInstanceManagerCPU: 6
+    # disable upgrade checker as FluxCD is used with renovate for upgrades:
+    preUpgradeChecker:
+      jobEnabled: false
+      upgradeVersionCheck: false
+
