@@ -82,10 +82,8 @@ spec:
     matchLabels:
       io.cilium.k8s.policy.serviceaccount: cloudnative-pg
   egress:
-    - toEndpoints:
-        - matchLabels:
-            io.cilium.k8s.policy.serviceaccount: postgres-cluster
-            io.kubernetes.pod.namespace: cnpg-cluster
+    - toEntities:
+      - cluster
       toPorts:
         - ports:
             - port: "8000"
