@@ -1,0 +1,48 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hopps-kickerlo
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: longhorn
+    - name: cloudnative-pg-operator
+  interval: 10m0s
+  path: ./infrastructure/hopps/overlays/kickerlo
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: hopps
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-hopps-age
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+---
+# grant access to hopps user
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: full-access-role
+  namespace: hopps-kickerlo
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: full-access-binding
+  namespace: hopps-kickerlo
+subjects:
+  - kind: ServiceAccount
+    name: hopps-external-user
+    namespace: hopps-dev
+roleRef:
+  kind: Role
+  name: full-access-role
+  apiGroup: rbac.authorization.k8s.io
