@@ -22,6 +22,12 @@ spec:
       postgresqlDatabase: apicurio-studio
       postgresqlUsername: apicurio-studio
       postgresqlPassword: UqFJmK6Y27wR0s
+    keycloak:
+      client:
+        id: apicurio-studio
+        secret: UCnyn2Tal2Q5mV5rtQOWFVbwdllHJHMs
+      realm: hopps
+      url: https://auth.${DOMAIN}
     global:
       storageClass: longhorn
     ingress:
