@@ -18,7 +18,7 @@ spec:
       hostname: "www.apicurio-studio.${DOMAIN}"
     postgresql:
       enabled: false
-      host: postgres-cluster-rw.cmpg-cluster
+      host: postgres-cluster-rw.cnpg-cluster
       postgresqlDatabase: apicurio-studio
       postgresqlUsername: apicurio-studio
       postgresqlPassword: UqFJmK6Y27wR0s
