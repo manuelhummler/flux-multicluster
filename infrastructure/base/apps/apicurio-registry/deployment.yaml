@@ -47,8 +47,6 @@ spec:
               value: "apicurio-registry-api"
             - name: APICURIO_UI_AUTH_OIDC_CLIENT_ID
               value: "apicurio-registry-ui"
-            - name: QUARKUS_OIDC_TLS_VERIFICATION
-              value: "full"
           ports:
             - name: http
               containerPort: 8080
