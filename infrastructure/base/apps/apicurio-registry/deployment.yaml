@@ -40,7 +40,7 @@ spec:
             - name: QUARKUS_OIDC_TENANT_ENABLED
               value: "true"
             - name: QUARKUS_OIDC_AUTH_SERVER_URL
-              value: "https://apicurio-registry.${DOMAIN}/realms/hopps"
+              value: "https://auth.${DOMAIN}/realms/hopps"
             - name: APICURIO_UI_AUTH_OIDC_REDIRECT_URI
               value: "https://apicurio-registry.${DOMAIN}"
             - name: QUARKUS_OIDC_CLIENT_ID
