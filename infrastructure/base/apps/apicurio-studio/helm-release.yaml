@@ -53,10 +53,10 @@ spec:
         APICURIO_UI_VALIDATION_CHANNELNAMEREGEXP: ([^{}/]*({[a-zA-Z][0-9a-zA-Z_]*})?)+
         APICURIO_REGISTRY_API_URL: https://apicurio-registry.${DOMAIN}/apis/registry/v3
         APICURIO_REGISTRY_UI_URL: https://apicurio-registry.${DOMAIN}
-        AUTH_TYPE: oidc
-        AUTH_URL: https://auth.${DOMAIN}/realms/hopps
-        AUTH_REDIRECT_URL: https://apicurio-studio.${DOMAIN}
-        AUTH_CLIENT_ID: hopps
+        APICURIO_AUTH_TYPE: oidc
+        APICURIO_AUTH_URL: https://auth.${DOMAIN}/realms/hopps
+        APICURIO_AUTH_REDIRECT_URL: https://apicurio-studio.${DOMAIN}
+        APICURIO_AUTH_CLIENT_ID: hopps
     api:
       securityContext:
         runAsGroup: 0
