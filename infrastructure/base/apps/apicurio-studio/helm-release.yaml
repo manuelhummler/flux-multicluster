@@ -1,0 +1,32 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: apicurio-studio
+  namespace: apicurio-studio
+spec:
+  chart:
+    spec:
+      chart: apicurio
+      sourceRef:
+        kind: HelmRepository
+        name: apicurio
+        namespace: flux-system
+      version: 1.0.15
+  interval: 1m0s
+  values:
+    general:
+      hostname: "www.apicurio-studio.${DOMAIN}"
+    postgresql:
+      enabled: false
+      host: postgres-cluster-rw.cmpg-cluster
+      postgresqlDatabase: apicurio-studio
+      postgresqlUsername: apicurio-studio
+      postgresqlPassword: UqFJmK6Y27wR0s
+    global:
+      storageClass: longhorn
+    ingress:
+      enabled: true
+      tls:
+        - secretName: apicurio-studio-tls
+          hosts:
+            - apicurio-studio.${DOMAIN}

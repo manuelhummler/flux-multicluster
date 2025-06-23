@@ -1,0 +1,10 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: apicurio-studio
+spec:
+  name: apicurio-studio
+  owner: apicurio-studio
+  cluster:
+    name: postgres-cluster
+  encoding: UTF8

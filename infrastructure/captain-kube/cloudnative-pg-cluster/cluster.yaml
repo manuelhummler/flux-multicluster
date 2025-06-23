@@ -19,15 +19,15 @@ spec:
     size: 10Gi
   monitoring:
     enablePodMonitor: true
-  #managed:
-    # Anlegen von Rollen
-    #roles:
-    #  - name: keycloak
-    #    login: true
-    #    comment: keycloak user
-    #    disablePassword: false
-    #    passwordSecret:
-    #      name: keycloak-secret
+  managed:
+#     Anlegen von Rollen
+    roles:
+      - name: apicurio-studio
+        login: true
+        comment: apicurio user
+        disablePassword: false
+        passwordSecret:
+          name: apicurio-studio-secret
   backup:
     retentionPolicy: "30d"
     barmanObjectStore:
@@ -37,10 +37,10 @@ spec:
       endpointURL: http://minio.minio:9000
       s3Credentials:
         accessKeyId:
-          key: minio-key-id
+          key: minio-access-key
           name: minio-s3
         secretAccessKey:
-          key: minio-access-key
+          key: minio-secret-key
           name: minio-s3
       wal:
         compression: gzip

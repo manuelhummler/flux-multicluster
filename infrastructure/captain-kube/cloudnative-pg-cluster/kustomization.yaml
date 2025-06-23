@@ -6,13 +6,14 @@ resources:
   - namespace.yaml
   - networkPolicy.yaml
   - storageClass.yaml
+  - database.yaml
 generatorOptions:
   disableNameSuffixHash: true
 secretGenerator:
   - name: minio-s3
     # Kustomize will encode it to base64
     envs:
-      - cluster-secret-encrypted.env
-  #- name: keycloak-secret
-  #  envs:
-  #    - secrets/keycloak-secret-encrypted.env
+      - minio-secret-encrypted.env
+  - name: apicurio-studio-secret
+    envs:
+      - secrets/apicurio-studio-encrypted.env
