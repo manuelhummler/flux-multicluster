@@ -37,6 +37,18 @@ spec:
                 secretKeyRef:
                   key: password
                   name: apicurio-registry-db
+            - name: QUARKUS_OIDC_TENANT_ENABLED
+              value: "true"
+            - name: QUARKUS_OIDC_AUTH_SERVER_URL
+              value: "https://apicurio-registry.${DOMAIN}/realms/hopps"
+            - name: APICURIO_UI_AUTH_OIDC_REDIRECT_URI
+              value: "https://apicurio-registry.${DOMAIN}"
+            - name: QUARKUS_OIDC_CLIENT_ID
+              value: "apicurio-registry-api"
+            - name: APICURIO_UI_AUTH_OIDC_CLIENT_ID
+              value: "apicurio-registry-ui"
+            - name: QUARKUS_OIDC_TLS_VERIFICATION
+              value: "true"
           ports:
             - name: http
               containerPort: 8080
