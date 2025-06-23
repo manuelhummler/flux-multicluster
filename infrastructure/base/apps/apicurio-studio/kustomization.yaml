@@ -4,3 +4,4 @@ resources:
   - ../../helm-repository/apicurio.yaml
   - helm-release.yaml
   - namespace.yaml
+  - ingress.yaml
