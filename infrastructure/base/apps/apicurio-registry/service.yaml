@@ -1,0 +1,10 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: apicurio-registry
+spec:
+  ports:
+    - name: http
+      port: 8080
+  selector:
+    app: apicurio-registry

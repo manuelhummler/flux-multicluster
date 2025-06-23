@@ -17,3 +17,6 @@ secretGenerator:
   - name: apicurio-studio-secret
     envs:
       - secrets/apicurio-studio-encrypted.env
+  - name: apicurio-registry-secret
+    envs:
+      - secrets/apicurio-registry-encrypted.env

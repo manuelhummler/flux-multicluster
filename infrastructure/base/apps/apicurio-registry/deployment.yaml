@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apicurio-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apicurio-registry
+  template:
+    metadata:
+      labels:
+        app: apicurio-registry
+    spec:
+      containers:
+        - name: apicurio-registry
+          image: apicurio/apicurio-registry:3.0.9
+          env:
+            - name: APICURIO_STORAGE_KIND
+              value: "sql"
+            - name: APICURIO_STORAGE_SQL_KIND
+              value: "postgresql"
+            - name: APICURIO_DATASOURCE_URL
+              value: "jdbc:postgresql://postgres-cluster-rw.cnpg-cluster:5432/apicurio-registry"
+            - name: APICURIO_DATASOURCE_USERNAME
+              value: "apicurio-registry"
+            - name: APICURIO_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: apicurio-registry-db
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            capabilities:
+              drop:
+                - ALL
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault

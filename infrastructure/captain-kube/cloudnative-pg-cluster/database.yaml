@@ -8,3 +8,14 @@ spec:
   cluster:
     name: postgres-cluster
   encoding: UTF8
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: apicurio-registry
+spec:
+  name: apicurio-registry
+  owner: apicurio-registry
+  cluster:
+    name: postgres-cluster
+  encoding: UTF8

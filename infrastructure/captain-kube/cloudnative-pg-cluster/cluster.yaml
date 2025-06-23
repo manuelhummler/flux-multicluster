@@ -24,10 +24,16 @@ spec:
     roles:
       - name: apicurio-studio
         login: true
-        comment: apicurio user
+        comment: apicurio studio user
         disablePassword: false
         passwordSecret:
           name: apicurio-studio-secret
+      - name: apicurio-registry
+        login: true
+        comment: apicurio registry user
+        disablePassword: false
+        passwordSecret:
+          name: apicurio-registry-secret
   backup:
     retentionPolicy: "30d"
     barmanObjectStore:
