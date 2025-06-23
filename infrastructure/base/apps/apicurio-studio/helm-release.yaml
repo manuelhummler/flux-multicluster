@@ -35,9 +35,7 @@ spec:
         runAsGroup: 0
         runAsUser: 0
     ui:
-      securityContext:
-        runAsGroup: 0
-        runAsUser: 0
+      securityContext: null
     api:
       securityContext:
         runAsGroup: 0
