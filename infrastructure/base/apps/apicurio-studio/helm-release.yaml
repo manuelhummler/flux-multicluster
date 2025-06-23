@@ -30,3 +30,15 @@ spec:
         - secretName: apicurio-studio-tls
           hosts:
             - apicurio-studio.${DOMAIN}
+    ws:
+      securityContext:
+        runAsGroup: 0
+        runAsUser: 0
+    ui:
+      securityContext:
+        runAsGroup: 0
+        runAsUser: 0
+    api:
+      securityContext:
+        runAsGroup: 0
+        runAsUser: 0
