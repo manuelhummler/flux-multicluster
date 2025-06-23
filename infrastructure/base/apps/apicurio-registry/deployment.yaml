@@ -24,6 +24,14 @@ spec:
               value: "jdbc:postgresql://postgres-cluster-rw.cnpg-cluster:5432/apicurio-registry"
             - name: APICURIO_DATASOURCE_USERNAME
               value: "apicurio-registry"
+            - name: APICURIO_REST_MUTABILITY_ARTIFACT_VERSION_CONTENT_ENABLED
+              value: "true"
+            - name: APICURIO_REST_DELETION_ARTIFACT_ENABLED
+              value: "true"
+            - name: APICURIO_REST_DELETION_ARTIFACT_VERSION_ENABLED
+              value: "true"
+            - name: APICURIO_REST_DELETION_GROUP_ENABLED
+              value: "true"
             - name: APICURIO_DATASOURCE_PASSWORD
               valueFrom:
                 secretKeyRef:
