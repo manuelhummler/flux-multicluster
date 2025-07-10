@@ -1,0 +1,320 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apicurio-ui
+  labels:
+    app: apicurio-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apicurio-ui
+  template:
+    metadata:
+      labels:
+        app: apicurio-ui
+    spec:
+      containers:
+        - name: apicurio-ui
+          image: apicurio/apicurio-studio-ui:0.2.62.Final
+          imagePullPolicy: Always
+          env:
+            # base configuration
+            - name: APICURIO_UI_LOGOUT_REDIRECT_URI
+              value: "/"
+            - name: APICURIO_OIDC_REDIRECT_HTTPS
+              value: "false"
+            - name: APICURIO_KC_CLIENT_ID
+              value: apicurio-studio # public keycloak client
+            - name: APICURIO_DB_CONNECTION_URL
+              value: jdbc:postgresql://apicurio-database/apicuriodb # ToDo: replace database url
+            - name: APICURIO_DB_DRIVER_NAME
+              value: postgresql
+            - name: APICURIO_DB_INITIALIZE
+              value: "true"
+            - name: APICURIO_DB_TYPE
+              value: postgresql9
+            - name: APICURIO_DB_USER_NAME
+              value: "apicurio"
+            - name: APICURIO_HUB_STORAGE_JDBC_TYPE
+              value: postgresql9
+            - name: APICURIO_UI_FEATURE
+              value: "false"
+            - name: APICURIO_SHARE_FORE_EVERYONE
+              value: "false"
+            - name: QUARKUS_HTTP_CORS_ORIGINS
+              value: "*"
+            # common overlays
+            - name: APICURIO_KC_AUTH_URL
+              value: "http://id.hopps.cloud"
+            - name: APICURIO_KC_REALM
+              value: hopps
+            - name: APICURIO_DB_PASSWORD
+              value: "password"
+            # apicurio overlays
+            - name: APICURIO_UI_HUB_API_URL
+              value: http://api.apicurio.hopps.cloud
+            - name: APICURIO_UI_EDITING_URL
+              value: ws://apicurio-api:8080
+            - name: APICURIO_UI_REDIRECT_URI
+              value: http://apicurio.hopps.cloud
+          ports:
+            - containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      securityContext:
+        fsGroup: 1000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apicurio-ui
+  labels:
+    app: apicurio-ui
+spec:
+  selector:
+    app: apicurio-ui
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: apicurio-ui
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: "apicurio.hopps.cloud"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: apicurio-ui
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - "apicurio.hopps.cloud"
+      secretName: apicurio-tls
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apicurio-api
+  labels:
+    app: apicurio-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apicurio-api
+  template:
+    metadata:
+      labels:
+        app: apicurio-api
+    spec:
+      containers:
+        - name: apicurio-api
+          image: apicurio/apicurio-studio-api:0.2.62.Final
+          imagePullPolicy: Always
+          env:
+            - name: APICURIO_KC_CLIENT_ID
+              value: apicurio-studio # private keycloak client
+            - name: APICURIO_DB_CONNECTION_URL
+              value: jdbc:postgresql://apicurio-database/apicuriodb
+            - name: APICURIO_DB_DRIVER_NAME
+              value: postgresql
+            - name: APICURIO_DB_INITIALIZE
+              value: "true"
+            - name: APICURIO_DB_TYPE
+              value: postgresql9
+            - name: APICURIO_DB_USER_NAME
+              value: "apicurio"
+            - name: APICURIO_HUB_STORAGE_JDBC_TYPE
+              value: postgresql9
+            - name: APICURIO_UI_FEATURE
+              value: "false"
+            - name: APICURIO_SHARE_FORE_EVERYONE
+              value: "false"
+            - name: QUARKUS_HTTP_CORS_ORIGINS
+              value: "*"
+            # common overlays
+            - name: APICURIO_KC_AUTH_URL
+              value: "http://id.hopps.cloud"
+            - name: APICURIO_KC_REALM
+              value: hopps
+            - name: APICURIO_DB_PASSWORD
+              value: "password"
+          ports:
+            - containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      securityContext:
+        fsGroup: 1000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apicurio-api
+  labels:
+    app: apicurio-api
+spec:
+  selector:
+    app: apicurio-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: apicurio-api
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: "api.apicurio.hopps.cloud"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: apicurio-api
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - "api.apicurio.hopps.cloud"
+      secretName: apicurio-api-tls
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apicurio-websocket
+  labels:
+    app: apicurio-websocket
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apicurio-websocket
+  template:
+    metadata:
+      labels:
+        app: apicurio-websocket
+    spec:
+      containers:
+        - name: apicurio-websocket
+          image: apicurio/apicurio-studio-ws:0.2.62.Final
+          imagePullPolicy: Always
+          env:
+            # common base
+            - name: APICURIO_KC_CLIENT_ID
+              value: apicurio-studio # public keycloak client
+            - name: APICURIO_DB_CONNECTION_URL
+              value: jdbc:postgresql://apicurio-database/apicuriodb
+            - name: APICURIO_DB_DRIVER_NAME
+              value: postgresql
+            - name: APICURIO_DB_INITIALIZE
+              value: "true"
+            - name: APICURIO_DB_TYPE
+              value: postgresql9
+            - name: APICURIO_DB_USER_NAME
+              value: "apicurio"
+            - name: APICURIO_HUB_STORAGE_JDBC_TYPE
+              value: postgresql9
+            - name: APICURIO_UI_FEATURE
+              value: "false"
+            - name: APICURIO_SHARE_FORE_EVERYONE
+              value: "false"
+            - name: QUARKUS_HTTP_CORS_ORIGINS
+              value: "*"
+            - name: APICURIO_KC_SSL_REQUIRED
+              value: "true"
+            # common overlays
+            - name: APICURIO_KC_AUTH_URL
+              value: "http://id.hopps.cloud"
+            - name: APICURIO_KC_REALM
+              value: hopps
+            - name: APICURIO_DB_PASSWORD
+              value: "password"
+          ports:
+            - containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      securityContext:
+        fsGroup: 1000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apicurio-websocket
+  labels:
+    app: apicurio-websocket
+spec:
+  selector:
+    app: apicurio-websocket
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: apicurio-websocket
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: "ws.apicurio.hopps.cloud"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: apicurio-websocket
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - "ws.apicurio.hopps.cloud"
+      secretName: apicurio-ws-tls
