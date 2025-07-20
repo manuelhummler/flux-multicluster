@@ -12,7 +12,7 @@ spec:
         kind: HelmRepository
         name: kimai
         namespace: flux-system
-      version: 4.3.4
+      version: 4.3.5
   interval: 1m0s
   values:
     kimaiAdminEmail: ${EMAIL}

@@ -12,7 +12,7 @@ spec:
         kind: HelmRepository
         name: ingress-nginx
         namespace: flux-system
-      version: 4.12.3
+      version: 4.13.0
   interval: 1h
   values:
     controller:
@@ -36,7 +36,8 @@ spec:
         annotations-risk-level: Critical
         compute-full-forward-for: true
         use-forward-headers: true
-        proxy-buffer-size: "16k"
+        strict-validate-path-type: false
+#        proxy-buffer-size: "16k"
         # configure proxy-protocol for HAProxy
         #use-proxy-procotol: true
         # configure Tracing
