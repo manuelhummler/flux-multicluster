@@ -10,7 +10,7 @@ spec:
       reconcileStrategy: ChartVersion
       sourceRef:
         kind: HelmRepository
-        name: bitnami
+        name: minio
         namespace: flux-system
       version: 15.0.7
   interval: 1m0s

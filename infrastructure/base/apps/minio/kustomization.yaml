@@ -4,4 +4,4 @@ resources:
   - namespace.yaml
   #- networkPolicy.yaml
   - helm-release.yaml
-  - ../../helm-repository/bitnami.yaml
+  - ../../helm-repository/minio.yaml
