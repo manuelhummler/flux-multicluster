@@ -36,7 +36,8 @@ spec:
         annotations-risk-level: Critical
         compute-full-forward-for: true
         use-forward-headers: true
-        proxy-buffer-size: "16k"
+        strict-validate-path-type: false
+#        proxy-buffer-size: "16k"
         # configure proxy-protocol for HAProxy
         #use-proxy-procotol: true
         # configure Tracing
