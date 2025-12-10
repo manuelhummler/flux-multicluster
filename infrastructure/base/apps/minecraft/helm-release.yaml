@@ -1,0 +1,49 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: minecraft
+  namespace: minecraft
+spec:
+  chart:
+    spec:
+      chart: minecraft
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: itzg-minecraft
+        namespace: flux-system
+  interval: 1m0s
+  values:
+    # Minecraft server configuration
+    minecraftServer:
+      eula: "TRUE"
+      version: "LATEST"
+      type: "VANILLA"
+      difficulty: normal
+      maxPlayers: 20
+      viewDistance: 10
+      gameMode: survival
+      motd: "Welcome to Minecraft on Kubernetes!"
+      pvp: true
+      onlineMode: true
+      memory: 2048M
+      # World download
+      worldUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/paf.zip"
+      # Service configuration
+      serviceType: LoadBalancer
+      servicePort: 25565
+      externalIPs:
+        - ${LB_IP}
+    # Resource configuration
+    resources:
+      requests:
+        memory: 2Gi
+        cpu: 500m
+      limits:
+        memory: 4Gi
+        cpu: 2000m
+    # Persistence
+    persistence:
+      dataDir:
+        enabled: true
+        size: 10Gi
