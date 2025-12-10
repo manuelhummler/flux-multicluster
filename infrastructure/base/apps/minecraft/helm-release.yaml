@@ -28,7 +28,7 @@ spec:
       onlineMode: true
       memory: 2048M
       # World download
-      worldUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/paf.zip"
+      downloadWorldUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/paf.zip"
       # Service configuration
       serviceType: LoadBalancer
       servicePort: 25565
