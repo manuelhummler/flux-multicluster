@@ -33,7 +33,7 @@ spec:
       serviceType: LoadBalancer
       servicePort: 25565
       externalIPs:
-        - ${LB_IP}
+        - 46.4.68.185
     # Resource configuration
     resources:
       requests:
