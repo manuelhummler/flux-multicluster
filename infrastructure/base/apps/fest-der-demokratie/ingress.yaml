@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fest-der-demokratie
+  namespace: fest-der-demokratie
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - ${DOMAIN_4}
+      secretName: fest-der-demokratie-tls
+  rules:
+    - host: ${DOMAIN_4}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fest-der-demokratie
+                port:
+                  name: http

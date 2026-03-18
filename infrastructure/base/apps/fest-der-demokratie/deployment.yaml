@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fest-der-demokratie
+  namespace: fest-der-demokratie
+  labels:
+    app.kubernetes.io/name: fest-der-demokratie
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fest-der-demokratie
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fest-der-demokratie
+    spec:
+      containers:
+        - name: fest-der-demokratie
+          image: ghcr.io/open-project-e-v/fest-der-demokratie:sha-3069292
+          ports:
+            - containerPort: 80
+              name: http
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10

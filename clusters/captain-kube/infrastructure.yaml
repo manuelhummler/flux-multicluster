@@ -691,3 +691,30 @@ spec:
       kind: HelmRelease
       name: minecraft
       namespace: minecraft
+---
+# fest-der-demokratie
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: fest-der-demokratie
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: ingress-nginx
+    - name: cert-manager
+  path: ./infrastructure/captain-kube/fest-der-demokratie
+  prune: true
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: fest-der-demokratie
+      namespace: fest-der-demokratie
