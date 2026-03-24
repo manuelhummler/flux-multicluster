@@ -19,10 +19,7 @@
     {
       "matchPackageNames": ["ghcr.io/juno-care/vibecode-mvp-v1"],
       "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": true,
-      "branchConcurrentLimit": 0,
-      "prConcurrentLimit": 0
+      "automergeType": "branch"
     }
   ]
 }
