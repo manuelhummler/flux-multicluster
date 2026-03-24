@@ -34,7 +34,7 @@ spec:
               mountPath: /data
       containers:
         - name: juno-care
-          image: ghcr.io/juno-care/vibecode-mvp-v1:v1
+          image: ghcr.io/juno-care/vibecode-mvp-v1:v2
           ports:
             - containerPort: 5002
               name: http
