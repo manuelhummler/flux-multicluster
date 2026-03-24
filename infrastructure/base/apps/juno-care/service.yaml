@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: juno-care
+  namespace: juno-care
+  labels:
+    app.kubernetes.io/name: juno-care
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: juno-care

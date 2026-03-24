@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: juno-care
+  namespace: juno-care
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - ${JUNO_CARE_DOMAIN}
+      secretName: juno-care-tls
+  rules:
+    - host: ${JUNO_CARE_DOMAIN}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: juno-care
+                port:
+                  name: http
