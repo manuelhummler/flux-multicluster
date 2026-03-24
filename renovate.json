@@ -4,6 +4,9 @@
   "flux": {
     "fileMatch": ["infrastructure/.+\\.yaml$"]
   },
+  "kubernetes": {
+    "fileMatch": ["infrastructure/.+\\.yaml$"]
+  },
   "hostRules": [
     {
       "hostType": "docker",
