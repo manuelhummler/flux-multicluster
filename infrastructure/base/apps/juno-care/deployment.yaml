@@ -19,6 +19,19 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-credentials
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      initContainers:
+        - name: fix-permissions
+          image: busybox:1.37
+          command: ["sh", "-c", "chown -R 1000:1000 /data"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: data
+              mountPath: /data
       containers:
         - name: juno-care
           image: ghcr.io/juno-care/vibecode-mvp-v1:latest
