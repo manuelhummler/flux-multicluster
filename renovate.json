@@ -11,5 +11,13 @@
       "username": "blackwolfk-9",
       "password": "{{ secrets.GHCR_TOKEN }}"
     }
+  ],
+  "packageRules": [
+    {
+      "matchPackageNames": ["ghcr.io/juno-care/vibecode-mvp-v1"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    }
   ]
 }
