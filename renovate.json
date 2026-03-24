@@ -21,7 +21,8 @@
       "automerge": true,
       "automergeType": "pr",
       "platformAutomerge": true,
-      "branchConcurrentLimit": 0
+      "branchConcurrentLimit": 0,
+      "prConcurrentLimit": 0
     }
   ]
 }
