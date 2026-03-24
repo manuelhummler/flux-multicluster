@@ -3,5 +3,13 @@
   "extends": ["config:recommended"],
   "flux": {
     "fileMatch": ["infrastructure/.+\\.yaml$"]
-  }
+  },
+  "hostRules": [
+    {
+      "hostType": "docker",
+      "matchHost": "ghcr.io",
+      "username": "blackwolfk-9",
+      "password": "{{ secrets.GHCR_TOKEN }}"
+    }
+  ]
 }
