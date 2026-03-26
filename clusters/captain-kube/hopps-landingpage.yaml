@@ -1,0 +1,81 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: hopps
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  ref:
+    branch: main
+  secretRef:
+    name: flux-system
+  url: ssh://git@github.com/hopps-app/hopps.cloud
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hopps-dev
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: longhorn
+    - name: cloudnative-pg-operator
+  interval: 10m0s
+  path: ./infrastructure/hopps/overlays/landingpage
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: hopps
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-hopps-age
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: hopps
+      namespace: hopps-dev
+---
+# User Berechtigung für Hopps only
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hopps-external-user
+  namespace: hopps-dev
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: full-access-role
+  namespace: hopps-dev
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: full-access-binding
+  namespace: hopps-dev
+subjects:
+  - kind: ServiceAccount
+    name: hopps-external-user
+    namespace: hopps-dev
+roleRef:
+  kind: Role
+  name: full-access-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hopps-external-user
+  namespace: hopps-dev
+  annotations:
+    kubernetes.io/service-account.name: "hopps-external-user"
+type: kubernetes.io/service-account-token
