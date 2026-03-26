@@ -27,13 +27,7 @@ spec:
       name: hopps
       namespace: hopps-landingpage
 ---
-# User Berechtigung für Hopps only
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: hopps-external-user
-  namespace: hopps-landingpage
----
+# grant access to hopps user
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -52,17 +46,8 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: hopps-external-user
-    namespace: hopps-landingpage
+    namespace: hopps-dev
 roleRef:
   kind: Role
   name: full-access-role
   apiGroup: rbac.authorization.k8s.io
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: hopps-external-user
-  namespace: hopps-dev
-  annotations:
-    kubernetes.io/service-account.name: "hopps-external-user"
-type: kubernetes.io/service-account-token
