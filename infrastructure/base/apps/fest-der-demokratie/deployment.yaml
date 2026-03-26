@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: fest-der-demokratie
-          image: ghcr.io/open-project-e-v/fest-der-demokratie:sha-3069292
+          image: ghcr.io/open-project-e-v/fest-der-demokratie:2
           ports:
             - containerPort: 80
               name: http
