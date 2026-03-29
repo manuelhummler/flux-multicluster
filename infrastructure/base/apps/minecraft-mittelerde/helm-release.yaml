@@ -27,13 +27,13 @@ spec:
       pvp: true
       onlineMode: true
       memory: 8192M
-      fabricLoaderVersion: "0.18.4"
+      fabricLoaderVersion: "0.17.2"
       # World download
       downloadWorldUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/mittelerde.zip"
       downloadModpackUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/homestead_modpack.zip"
-      removeOldMods: true
-      # Service configuration
+#      removeOldMods: true
       serviceType: LoadBalancer
+      # Service configuration
       servicePort: 25566
       externalIPs:
         - 46.4.68.185
