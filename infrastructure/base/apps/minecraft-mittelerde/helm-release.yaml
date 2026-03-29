@@ -17,7 +17,7 @@ spec:
     # Minecraft server configuration
     minecraftServer:
       eula: "TRUE"
-      version: "0.18.4"
+      version: "1.20.1"
       type: "FABRIC"
       difficulty: normal
       maxPlayers: 20
@@ -27,6 +27,7 @@ spec:
       pvp: true
       onlineMode: true
       memory: 8192M
+      fabricLoaderVersion: "0.18.4"
       # World download
       downloadWorldUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/mittelerde.zip"
       downloadModpackUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/homestead-modpack.zip"
