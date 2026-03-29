@@ -30,7 +30,6 @@ spec:
       fabricLoaderVersion: "0.17.2"
       # World download
       downloadWorldUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/mittelerde.zip"
-      genericPackUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/homestead_modpack.zip"
       # removeOldMods: true
       serviceType: LoadBalancer
       # Service configuration
@@ -45,6 +44,8 @@ spec:
       limits:
         memory: 8Gi
         cpu: 4000m
+    extraEnv:
+      GENERIC_PACK_URL: "https://paf-minecraft.fra1.digitaloceanspaces.com/homestead_modpack.zip"
     # Persistence
     persistence:
       dataDir:
