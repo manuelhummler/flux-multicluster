@@ -45,9 +45,6 @@ spec:
       limits:
         memory: 8Gi
         cpu: 4000m
-    securityContext:
-      runAsUser: 1000
-      fsGroup: 2000
     # Persistence
     persistence:
       dataDir:
