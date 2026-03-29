@@ -30,7 +30,7 @@ spec:
       fabricLoaderVersion: "0.18.4"
       # World download
       downloadWorldUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/mittelerde.zip"
-      downloadModpackUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/homestead-modpack.zip"
+      downloadModpackUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/homestead_modpack.zip"
       # Service configuration
       serviceType: LoadBalancer
       servicePort: 25566
