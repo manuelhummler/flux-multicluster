@@ -662,11 +662,11 @@ spec:
       namespace: minecraft
 
 ---
-# minecraft
+# minecraft-mittelerde
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: minecraft
+  name: minecraft-mittelerde
   namespace: flux-system
 spec:
   timeout: 5m0s
