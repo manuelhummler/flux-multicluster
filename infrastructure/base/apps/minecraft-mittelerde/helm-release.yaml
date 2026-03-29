@@ -31,7 +31,7 @@ spec:
       # World download
       downloadWorldUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/mittelerde.zip"
       genericPackUrl: "https://paf-minecraft.fra1.digitaloceanspaces.com/homestead_modpack.zip"
-#      removeOldMods: true
+      # removeOldMods: true
       serviceType: LoadBalancer
       # Service configuration
       servicePort: 25566
@@ -52,4 +52,4 @@ spec:
     persistence:
       dataDir:
         enabled: true
-        size: 10Gi
+        Size: 10Gi
