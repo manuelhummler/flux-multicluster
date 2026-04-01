@@ -14,6 +14,8 @@ spec:
         namespace: flux-system
   interval: 1m0s
   values:
+    image:
+      tag: java21
     # Minecraft server configuration
     minecraftServer:
       eula: "TRUE"
@@ -45,7 +47,7 @@ spec:
         memory: 8Gi
         cpu: 4000m
     extraEnv:
-      GENERIC_PACK_URL: "https://paf-minecraft.fra1.digitaloceanspaces.com/homestead_modpack.zip"
+      GENERIC_PACK: "https://paf-minecraft.fra1.digitaloceanspaces.com/homestead_modpack.zip"
     # Persistence
     persistence:
       dataDir:
