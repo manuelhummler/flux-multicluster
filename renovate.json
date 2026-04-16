@@ -27,6 +27,7 @@
       "versioning": "docker",
       "automerge": true,
       "automergeType": "branch",
+      "ignoreTests": true,
       "prPriority": 10
     }
   ]
