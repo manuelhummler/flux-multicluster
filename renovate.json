@@ -23,6 +23,7 @@
     },
     {
       "matchPackageNames": ["ghcr.io/open-project-e-v/fest-der-demokratie"],
+      "versioning": "docker",
       "automerge": true,
       "automergeType": "branch"
     }
