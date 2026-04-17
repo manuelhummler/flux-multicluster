@@ -11,7 +11,7 @@ spec:
         kind: HelmRepository
         name: apicurio
         namespace: flux-system
-      version: 1.0.15
+      version: 2.2.0
   interval: 1m0s
   values:
     general:
