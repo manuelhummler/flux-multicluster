@@ -14,14 +14,31 @@ spec:
         namespace: flux-system
       version: 4.3.12
   interval: 1m0s
+  # Chart 4.3.12 switched TRUSTED_HOSTS to a real regex (pipe-separated) but
+  # only templates ingress.hostname into it. extraEnvVars renders a second env
+  # entry that gets dropped by the env-list merge on apply, so patch the value.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: kimai-kimai2
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: kimai-kimai2
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - name: kimai2
+                        env:
+                          - name: TRUSTED_HOSTS
+                            value: localhost|kimai.${DOMAIN}|time.${DOMAIN_2}|time.${DOMAIN_3}
   values:
     kimaiAdminEmail: ${EMAIL}
     existingSecret: kimai-secret
-    # Chart 4.3.12 switched TRUSTED_HOSTS to a real regex (pipe-separated).
-    # The template only includes ingress.hostname, so override to cover extraHosts.
-    extraEnvVars:
-      - name: TRUSTED_HOSTS
-        value: localhost|kimai.${DOMAIN}|time.${DOMAIN_2}|time.${DOMAIN_3}
     ingress:
       extraHosts:
         - name: time.${DOMAIN_2}
