@@ -17,6 +17,11 @@ spec:
   values:
     kimaiAdminEmail: ${EMAIL}
     existingSecret: kimai-secret
+    # Chart 4.3.12 switched TRUSTED_HOSTS to a real regex (pipe-separated).
+    # The template only includes ingress.hostname, so override to cover extraHosts.
+    extraEnvVars:
+      - name: TRUSTED_HOSTS
+        value: localhost|kimai.${DOMAIN}|time.${DOMAIN_2}|time.${DOMAIN_3}
     ingress:
       extraHosts:
         - name: time.${DOMAIN_2}
