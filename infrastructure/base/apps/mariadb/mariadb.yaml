@@ -4,6 +4,8 @@ metadata:
   name: mariadb-galera
   namespace: mariadb
 spec:
+  image: docker-registry1.mariadb.com/library/mariadb:11.8
+
   maxScaleRef:
     name: maxscale-galera
     namespace: mariadb
@@ -13,6 +15,7 @@ spec:
     key: rootPassword
     generate: true
 
+  port: 3306
   storage:
     size: 10Gi
 
@@ -20,6 +23,9 @@ spec:
 
   galera:
     enabled: true
+    agent:
+      port: 5555
+      probePort: 5556
     recovery:
       enabled: true
       minClusterSize: 1
@@ -57,3 +63,5 @@ spec:
 
   metrics:
     enabled: true
+    exporter:
+      port: 9104
