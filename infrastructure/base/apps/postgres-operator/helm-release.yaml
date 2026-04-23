@@ -37,3 +37,16 @@ spec:
       spilo_runasgroup: 103
       # group ID with write-access to volumes (required to run Spilo as non-root process)
       spilo_fsgroup: 103
+    # Logical pg_dumpall backup to DigitalOcean Spaces (offsite).
+    # Activated per cluster via `enableLogicalBackup: true`.
+    # Credentials are injected from postgres-backup-do-secret (AWS_ACCESS_KEY_ID/SECRET).
+    configLogicalBackup:
+      logical_backup_provider: "s3"
+      logical_backup_s3_bucket: "hopps"
+      logical_backup_s3_bucket_prefix: "hopps-cloud-postgres"
+      logical_backup_s3_endpoint: "https://fra1.digitaloceanspaces.com"
+      logical_backup_s3_region: "fra1"
+      logical_backup_s3_sse: ""
+      logical_backup_s3_retention_time: "30 days"
+      logical_backup_schedule: "30 3 * * *"
+      logical_backup_cronjob_environment_secret: "postgres-backup-do-secret"

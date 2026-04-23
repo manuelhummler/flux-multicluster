@@ -10,6 +10,7 @@ spec:
     parameters:
       # depending on application that can cause issues
       password_encryption: scram-sha-256
+  enableLogicalBackup: true
   numberOfInstances: 1
   volume:
     size: "20Gi"

@@ -9,3 +9,7 @@ secretGenerator:
     namespace: postgres-cluster
     envs:
       - secret-encrypted.env
+  - name: postgres-backup-do-secret
+    namespace: postgres-cluster
+    envs:
+      - backup-do-secret-encrypted.env
