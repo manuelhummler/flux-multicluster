@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: apicurio-registry
-          image: apicurio/apicurio-registry:3.0.9
+          image: apicurio/apicurio-registry:3.2.4
           env:
             - name: APICURIO_STORAGE_KIND
               value: "sql"
