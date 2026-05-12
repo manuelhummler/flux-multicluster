@@ -162,7 +162,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: traefik-crds
-  path: ./traefik/crds
   prune: true
 ---
 # traefik
