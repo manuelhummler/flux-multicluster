@@ -23,7 +23,7 @@ spec:
       existingSecretKey: secret-uri
     ingress:
       enabled: true
-      class: "nginx"
+      class: "traefik"
       tlsSecret: vaultwarden-tls
       hostname: vault.${DOMAIN}
       additionalHostnames:

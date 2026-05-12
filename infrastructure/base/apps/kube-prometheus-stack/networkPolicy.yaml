@@ -1,30 +1,3 @@
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: default-deny
-spec:
-  description: "Block all the traffic (except DNS) by default"
-  ingress:
-    - {}
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: '53'
-              protocol: UDP
-          rules:
-            dns:
-              - matchPattern: '*'
-  endpointSelector:
-    matchExpressions:
-      - key: io.kubernetes.pod.namespace
-        operator: NotIn
-        values:
-          - kube-system
----
 ## kube-prometheus-stack components
 # allow egress from prometheus to alertmanager
 apiVersion: cilium.io/v2
@@ -260,11 +233,11 @@ spec:
         - ports:
             - port: "10250"
 ---
-# allow ingress from ingress-nginx to prometheus
+# allow ingress from traefik to prometheus
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: allow-ingress-from-ingress-nginx-to-prometheus
+  name: allow-ingress-from-traefik-to-prometheus
 spec:
   endpointSelector:
     matchLabels:
@@ -272,8 +245,8 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
-            io.cilium.k8s.policy.serviceaccount: ingress-nginx
-            io.kubernetes.pod.namespace: ingress-nginx
+            io.cilium.k8s.policy.serviceaccount: traefik
+            io.kubernetes.pod.namespace: traefik
       toPorts:
         - ports:
             - port: "9090"
@@ -295,11 +268,11 @@ spec:
         - ports:
             - port: "9090"
 ---
-# allow ingress from ingress-nginx to grafana
+# allow ingress from traefik to grafana
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: allow-ingress-from-ingress-nginx-to-grafana
+  name: allow-ingress-from-traefik-to-grafana
 spec:
   endpointSelector:
     matchLabels:
@@ -307,17 +280,17 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
-            io.cilium.k8s.policy.serviceaccount: ingress-nginx
-            io.kubernetes.pod.namespace: ingress-nginx
+            io.cilium.k8s.policy.serviceaccount: traefik
+            io.kubernetes.pod.namespace: traefik
       toPorts:
         - ports:
             - port: "3000"
 ---
-# allow ingress from ingress-nginx to alertmanager
+# allow ingress from traefik to alertmanager
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: allow-ingress-from-ingress-nginx-to-alertmanager
+  name: allow-ingress-from-traefik-to-alertmanager
 spec:
   endpointSelector:
     matchLabels:
@@ -325,8 +298,8 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
-            io.cilium.k8s.policy.serviceaccount: ingress-nginx
-            io.kubernetes.pod.namespace: ingress-nginx
+            io.cilium.k8s.policy.serviceaccount: traefik
+            io.kubernetes.pod.namespace: traefik
       toPorts:
         - ports:
             - port: "9093"
@@ -399,21 +372,3 @@ spec:
 # Note following FQDN's could still be needed
 # secure.gravatar.com
 # storage.googleapis.com
----
-# Allow TLS
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: allow-acme-solver
-spec:
-  endpointSelector:
-    matchLabels:
-      acme.cert-manager.io/http01-solver: "true"
-  ingress:
-    - fromEndpoints:
-        - matchLabels:
-            io.cilium.k8s.policy.serviceaccount: ingress-nginx
-            io.kubernetes.pod.namespace: ingress-nginx
-      toPorts:
-        - ports:
-            - port: "8089"

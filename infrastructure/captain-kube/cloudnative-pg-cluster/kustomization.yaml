@@ -7,6 +7,7 @@ resources:
   - networkPolicy.yaml
   - storageClass.yaml
   - database.yaml
+  - ../../base/ciliumNetworkPolicy
 generatorOptions:
   disableNameSuffixHash: true
 secretGenerator:

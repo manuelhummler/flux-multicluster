@@ -20,7 +20,7 @@ spec:
     ingress:
       enabled: true
       hostname: dtrack.${DOMAIN}
-      ingressClassName: nginx
+      ingressClassName: traefik
       tls:
         - hosts:
           - dtrack.${DOMAIN}
@@ -90,7 +90,7 @@ metadata:
   name: dtrack-dependency-track-cloud
   namespace: dtrack
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
     - host: dtrack.${DOMAIN_2}
       http:

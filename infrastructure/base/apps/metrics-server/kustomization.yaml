@@ -4,3 +4,4 @@ resources:
   - networkPolicy.yaml
   - helm-release.yaml
   - ../../helm-repository/metrics-server.yaml
+  - ../../ciliumNetworkPolicy

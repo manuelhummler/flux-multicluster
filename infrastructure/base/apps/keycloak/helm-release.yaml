@@ -23,7 +23,7 @@ spec:
     proxyHeaders: "xforwarded"
     ingress:
       enabled: true
-      ingressClassName: "nginx"
+      ingressClassName: "traefik"
       hostname: auth.${DOMAIN}
       hostnameStrict: true
       annotations:

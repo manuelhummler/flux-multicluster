@@ -6,3 +6,4 @@ resources:
   - helm-release.yaml
   - networkPolicy.yaml
   - ../../helm-repository/cloudnative-pg.yaml
+  - ../../ciliumNetworkPolicy

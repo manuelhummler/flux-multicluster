@@ -4,3 +4,5 @@ resources:
   - networkPolicy.yaml
   - helm-release.yaml
   - ../../helm-repository/oauth2-proxy.yaml
+  - ../../ciliumNetworkPolicy
+  - ../../ciliumNetworkPolicy/allow-acme.yaml

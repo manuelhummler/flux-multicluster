@@ -53,7 +53,7 @@ spec:
           - time.${DOMAIN_3}
           secretName: kimai-cloud-tls
       enabled: true
-      ingressClassName: "nginx"
+      ingressClassName: "traefik"
       hostname: kimai.${DOMAIN}
       path: /
       annotations:
