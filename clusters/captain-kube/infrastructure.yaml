@@ -133,11 +133,43 @@ spec:
       - kind: Secret
         name: cluster-secrets
 ---
-# ingress-nginx
+# traefik-crds-source (creates the GitRepository that pulls CRDs from the traefik-helm-chart)
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: ingress-nginx
+  name: traefik-crds-source
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/captain-kube/traefik-crds
+  prune: true
+---
+# traefik-crds (applies CRDs fetched via the traefik-crds GitRepository)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: traefik-crds
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: traefik-crds-source
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: traefik-crds
+  path: ./traefik/crds
+  prune: true
+---
+# traefik
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: traefik
   namespace: flux-system
 spec:
   timeout: 5m0s
@@ -147,13 +179,19 @@ spec:
     name: flux-system
   dependsOn:
     - name: prometheus-operator-crds
-  path: ./infrastructure/captain-kube/ingress-nginx
+    - name: cert-manager
+    - name: traefik-crds
+  path: ./infrastructure/captain-kube/traefik
   prune: true
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
-      name: ingress-nginx
-      namespace: ingress-nginx
+      name: traefik
+      namespace: traefik
 ---
 # minio
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -701,7 +739,7 @@ spec:
     kind: GitRepository
     name: flux-system
   dependsOn:
-    - name: ingress-nginx
+    - name: traefik
     - name: cert-manager
   path: ./infrastructure/captain-kube/fest-der-demokratie
   prune: true
@@ -729,7 +767,7 @@ spec:
     name: flux-system
   dependsOn:
     - name: longhorn
-    - name: ingress-nginx
+    - name: traefik
     - name: cert-manager
   path: ./infrastructure/captain-kube/juno-care
   prune: true
