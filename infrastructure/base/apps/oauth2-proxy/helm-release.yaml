@@ -47,6 +47,18 @@ spec:
     # Sub-Chart configuration
     redis-ha:
       enabled: true
+      replicas: 1
+      redis:
+        resources:
+          limits:
+            cpu: 300m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        # configure when only one redis server is running
+        config:
+          min-replicas-to-write: 0
       # disable networkPolicy as CiliumNetworkPolicy is used
       networkPolicy:
          enabled: false
