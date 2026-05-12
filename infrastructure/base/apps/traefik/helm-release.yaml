@@ -1,0 +1,140 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: traefik
+spec:
+  interval: 5m
+  chart:
+    spec:
+      version: 40.1.0
+      chart: traefik
+      sourceRef:
+        kind: HelmRepository
+        name: traefik
+      interval: 60m
+  # remove all CRDs, as installed beforehand
+  postRenderers:
+    - kustomize:
+        patches:
+          - patch: |
+              - $$patch: delete
+            target:
+              kind: CustomResourceDefinition
+              name: .*\.gateway\.networking\.k8s\.io
+              group: apiextensions.k8s.io
+  values:
+    image:
+      # renovate: datasource=docker depName=library/traefik versioning=semver
+      tag: v3.7.1
+    gateway:
+      enabled: false
+      #annotations:
+      #  cert-manager.io/issuer: letsencrypt-prod
+      listeners:
+        web:
+          port: 8000
+          hostname: "*.${DOMAIN}"
+          protocol: HTTP
+          namespacePolicy:
+            from: All
+        websecure:
+          hostname: "*.${DOMAIN}"
+          port: 8443
+          protocol: HTTPS
+          namespacePolicy:
+            from: All
+          certificateRefs:
+            - name: ${DOMAIN}-tls
+    providers:
+      kubernetesCRD:
+        allowCrossNamespace: true
+    # configure prometheus metrics
+    metrics:
+      prometheus:
+        service:
+          enabled: true
+        serviceMonitor:
+          enabled: true
+        prometheusRule:
+          enabled: false
+    # ToDo: configure OTLP
+    global:
+      checkNewVersion: false
+    # redirect all traffic to websecure
+    ports:
+      web:
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true
+      websecure:
+        http:
+          encodedCharacters:
+            allowEncodedSlash: true
+            allowEncodedBackSlash: true
+            allowEncodedNullCharacter: true
+            allowEncodedSemicolon: true
+            allowEncodedPercent: true
+            allowEncodedQuestionMark: true
+            allowEncodedHash: true
+          sanitizePath: false
+          # allow maxHeader size of 5MB
+          maxHeaderBytes: 5242880
+    # expose dashboard via ingress
+    ingressRoute:
+      dashboard:
+        enabled: true
+    # expose traefik dashboard through gateway api
+    extraObjects:
+      - apiVersion: v1
+        kind: Service
+        metadata:
+          name: traefik-api
+        spec:
+          type: ClusterIP
+          selector:
+            app.kubernetes.io/name: traefik
+            app.kubernetes.io/instance: traefik-traefik
+          ports:
+            - port: 8080
+              name: traefik
+              targetPort: 8080
+              protocol: TCP
+      - apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        metadata:
+          name: traefik-dashboard
+          annotations:
+            cert-manager.io/cluster-issuer: "letsencrypt-prod"
+            traefik.ingress.kubernetes.io/router.entrypoints: websecure
+            traefik.ingress.kubernetes.io/router.middlewares: traefik-oauth-forwardauth@kubernetescrd,traefik-oauth-forwardauth-service@kubernetescrd
+        spec:
+          ingressClassName: traefik
+          rules:
+            - host: traefik.${DOMAIN}
+              http:
+                paths:
+                  - path: /
+                    pathType: Prefix
+                    backend:
+                      service:
+                        name: traefik-api
+                        port:
+                          name: traefik
+          tls:
+            - secretName: traefik-tls
+              hosts:
+                - traefik.${DOMAIN}
+    # restrict to target namespace
+    rbac:
+      # Kubernetes Gateway provider requires ClusterRole. RBAC cannot be namespaced.
+      namespaced: false
+    service:
+      spec:
+        externalIPs:
+          - ${LB_IP}
+    logs:
+      enabled: true
+      timezone: Europe/Berlin

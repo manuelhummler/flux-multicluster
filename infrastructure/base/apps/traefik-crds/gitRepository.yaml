@@ -1,0 +1,21 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: traefik-crds
+  namespace: flux-system
+spec:
+  interval: 30m
+  url: https://github.com/traefik/traefik-helm-chart
+  ref:
+    # should match helm chart version
+    tag: v40.1.0
+  # only add traefik crds
+  ignore: |
+    # exclude
+    /*
+    traefik/crds/gateway-standard-install.yaml
+    traefik/crds/kustomization.yaml
+    # include
+    # only needed when traefik hub is needed
+    #!traefik-crds/crds-files/hub
+    !traefik/crds
