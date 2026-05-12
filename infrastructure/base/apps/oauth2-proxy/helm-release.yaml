@@ -47,28 +47,31 @@ spec:
     # Sub-Chart configuration
     redis-ha:
       enabled: true
-      # configure storage
-      global:
-        storageClass: "longhorn"
       # disable networkPolicy as CiliumNetworkPolicy is used
       networkPolicy:
          enabled: false
-      auth:
-        existingSecret: oauth2-proxy-redis
-        existingSecretPasswordKey: redis-password
-      master:
-        resources:
-          limits:
-            cpu: 300m
-            memory: 512Mi
-          requests:
-            cpu: 100m
-            memory: 256Mi
-      replica:
-        resources:
-          limits:
-            cpu: 300m
-            memory: 512Mi
-          requests:
-            cpu: 100m
-            memory: 256Mi
+      auth: true
+      existingSecret: oauth2-proxy-redis
+      authKey: redis-password
+      # enable exporter
+      exporter:
+        enabled: true
+        # enable scraping from prometheus
+        serviceMonitor:
+          enabled: true
+      # add alerts for redis
+      prometheusRule:
+        enabled: true
+        rules:
+          - alert: RedisPodDown
+            expr: |
+              redis_up{job="{{ include "redis-ha.fullname" . }}"} == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              description: Redis pod {{ "{{ $labels.pod }}" }} is down
+              summary: Redis pod {{ "{{ $labels.pod }}" }} is down
+      # configure storage
+      persistentVolume:
+        size: 1Gi
