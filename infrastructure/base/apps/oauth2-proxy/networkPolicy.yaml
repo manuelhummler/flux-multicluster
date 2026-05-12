@@ -34,60 +34,42 @@ spec:
         - ports:
             - port: "44180"
 ---
-# allow ingress from oauth2-proxy to redis-master
+# allow ingress from oauth2-proxy to redis-ha
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: allow-ingress-to-redis-master-from-oauth2-proxy
+  name: allow-ingress-to-redis-ha-from-oauth2-proxy
 spec:
   endpointSelector:
     matchLabels:
-      io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-master
+      io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-ha
   ingress:
     - fromEndpoints:
         - matchLabels:
             io.cilium.k8s.policy.serviceaccount: oauth2-proxy
-            io.kubernetes.pod.namespace: oauth2-proxy
       toPorts:
         - ports:
             - port: "6379"
 ---
-# allow ingress from redis-replica to redis-master
+# allow ingress from redis-ha to redis-ha
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: allow-ingress-to-redis-master-from-redis-replica
+  name: allow-ingress-to-redis-ha-from-redis-ha
 spec:
   endpointSelector:
     matchLabels:
-      io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-master
+      io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-ha
   ingress:
     - fromEndpoints:
         - matchLabels:
-            io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-replica
+            io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-ha
       toPorts:
         - ports:
             - port: "6379"
+            - port: "26379"
 ---
-# allow ingress from redis-master to redis-replica
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: allow-ingress-to-redis-replica-from-redis-master
-spec:
-  endpointSelector:
-    matchLabels:
-      io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-replica
-  ingress:
-    - fromEndpoints:
-        - matchLabels:
-            io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-master
-            io.kubernetes.pod.namespace: oauth2-proxy
-      toPorts:
-        - ports:
-            - port: "6379"
----
-# allow egress from oauth2-proxy to redis-master
+# allow egress from oauth2-proxy to redis-ha
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -99,46 +81,28 @@ spec:
   egress:
     - toEndpoints:
         - matchLabels:
-            io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-master
-            io.kubernetes.pod.namespace: oauth2-proxy
+            io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-ha
       toPorts:
         - ports:
             - port: "6379"
 ---
-# allow egress from redis-master to redis-replica
+# allow egress from redis-ha to redis-ha
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: allow-egress-from-redis-master-to-redis-replica
+  name: allow-egress-from-redis-ha-to-redis-ha
 spec:
   endpointSelector:
     matchLabels:
-      io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-master
+      io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-ha
   egress:
     - toEndpoints:
         - matchLabels:
-            io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-replica
-            io.kubernetes.pod.namespace: oauth2-proxy
+            io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-ha
       toPorts:
         - ports:
             - port: "6379"
----
-# allow egress from redis-replica to redis-master
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: allow-egress-from-redis-replica-to-redis-master
-spec:
-  endpointSelector:
-    matchLabels:
-      io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-replica
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            io.cilium.k8s.policy.serviceaccount: oauth2-proxy-redis-master
-      toPorts:
-        - ports:
-            - port: "6379"
+            - port: "26379"
 ---
 # allow egress traffik from oauth2-proxy to keycloak
 apiVersion: cilium.io/v2

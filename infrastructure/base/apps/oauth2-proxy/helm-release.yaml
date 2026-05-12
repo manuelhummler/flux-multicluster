@@ -45,7 +45,7 @@ spec:
       redis:
         existingSecret: oauth2-proxy-redis
     # Sub-Chart configuration
-    redis:
+    redis-ha:
       enabled: true
       # configure storage
       global:
