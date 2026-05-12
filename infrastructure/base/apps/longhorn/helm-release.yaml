@@ -16,7 +16,7 @@ spec:
   values:
     ingress:
       enabled: true
-      ingressClassName: nginx
+      ingressClassName: traefik
       host: longhorn.${DOMAIN}
       tls: true
       secureBackends: true
@@ -25,9 +25,7 @@ spec:
       annotations:
         cert-manager.io/cluster-issuer: "letsencrypt-prod"
         # authenticate with oauth2-proxy
-        nginx.ingress.kubernetes.io/auth-response-headers: x-auth-request-user, x-auth-request-email
-        nginx.ingress.kubernetes.io/auth-signin: https://${OAUTH_PROXY_DOMAIN}/oauth2/start?rd=$scheme://$host$request_uri
-        nginx.ingress.kubernetes.io/auth-url: https://${OAUTH_PROXY_DOMAIN}/oauth2/auth
+        traefik.ingress.kubernetes.io/router.middlewares: traefik-oauth-forwardauth@kubernetescrd,traefik-oauth-forwardauth-service@kubernetescrd
     networkPolicies:
       enabled: true
       type: "rke1"

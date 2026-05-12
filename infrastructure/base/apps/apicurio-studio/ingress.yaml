@@ -4,11 +4,10 @@ metadata:
   name: apicurio-studio-ui
   namespace: apicurio-studio
   annotations:
-    kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/rewrite-target: /
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   tls:
   - hosts:
     - apicurio-studio.${DOMAIN}

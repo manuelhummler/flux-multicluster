@@ -25,7 +25,7 @@ spec:
       enabled: true
       annotations:
         cert-manager.io/cluster-issuer: letsencrypt-prod
-      ingressClassName: nginx
+      ingressClassName: traefik
       hostname: minio.${DOMAIN}
       tls: true
     apiIngress:
@@ -34,7 +34,7 @@ spec:
         cert-manager.io/cluster-issuer: letsencrypt-prod
         # allow files with max size of 2GB
         nginx.ingress.kubernetes.io/proxy-body-size: "2g"
-      ingressClassName: nginx
+      ingressClassName: traefik
       hostname: api.minio.${DOMAIN}
       tls: true
     resources:
