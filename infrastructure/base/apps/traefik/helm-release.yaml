@@ -6,7 +6,7 @@ spec:
   interval: 5m
   chart:
     spec:
-      version: 40.1.0
+      version: 40.3.0
       chart: traefik
       sourceRef:
         kind: HelmRepository
