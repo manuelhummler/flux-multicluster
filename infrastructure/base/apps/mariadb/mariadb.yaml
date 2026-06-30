@@ -4,7 +4,7 @@ metadata:
   name: mariadb-galera
   namespace: mariadb
 spec:
-  image: docker-registry1.mariadb.com/library/mariadb:11.8
+  image: docker-registry1.mariadb.com/library/mariadb:12.3
 
   maxScaleRef:
     name: maxscale-galera
