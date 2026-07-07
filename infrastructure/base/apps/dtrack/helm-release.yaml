@@ -12,7 +12,7 @@ spec:
         kind: HelmRepository
         name: dtrack
         namespace: flux-system
-      version: 1.1.0
+      version: 1.2.0
   upgrade:
     timeout: 10m0s
   interval: 1m0s
