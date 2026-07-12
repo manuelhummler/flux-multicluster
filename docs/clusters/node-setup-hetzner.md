@@ -429,6 +429,25 @@ Nach dem Join auf `gibbs`:
 > Node aus, verliert der Cluster das Quorum (keine Ausfalltoleranz). Für echtes HA werden
 > **drei** Control-Plane-Nodes empfohlen (siehe geplanter 3. Node).
 
+## 14. Flux-Operator installieren (Control-Plane / Root-Server)
+
+Als Einstieg in den GitOps-Betrieb wird der **flux-operator** von controlplane.io per Helm
+(OCI-Chart) installiert. Auf `barbossa-kube`:
+
+```bash
+helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator \
+  --namespace flux-system \
+  --create-namespace
+```
+
+- Der flux-operator verwaltet die Flux-Controller über eine `FluxInstance`-CR (statt des
+  klassischen `flux bootstrap`).
+- Namespace `flux-system` wird angelegt, falls noch nicht vorhanden.
+
+> Nächster Schritt: eine `FluxInstance`-Ressource anlegen, die auf dieses Git-Repository
+> zeigt (Cluster-Pfad `clusters/<cluster-name>`), damit Flux die Infrastruktur aus dem Repo
+> synchronisiert.
+
 ## Nächste Schritte
 
-_Wird ergänzt (3. Node, Flux-Bootstrap …)._
+_Wird ergänzt (FluxInstance / Repo-Anbindung, 3. Node …)._
