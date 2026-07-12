@@ -6,26 +6,16 @@ spec:
   interval: 5m
   chart:
     spec:
-      version: 40.3.0
+      version: 41.0.2
       chart: traefik
       sourceRef:
         kind: HelmRepository
         name: traefik
       interval: 60m
-  # remove all CRDs, as installed beforehand
-  postRenderers:
-    - kustomize:
-        patches:
-          - patch: |
-              - $$patch: delete
-            target:
-              kind: CustomResourceDefinition
-              name: .*\.gateway\.networking\.k8s\.io
-              group: apiextensions.k8s.io
   values:
     image:
       # renovate: datasource=docker depName=library/traefik versioning=semver
-      tag: v3.7.1
+      tag: v3.7.7
     gateway:
       enabled: false
       #annotations:
@@ -131,10 +121,6 @@ spec:
     rbac:
       # Kubernetes Gateway provider requires ClusterRole. RBAC cannot be namespaced.
       namespaced: false
-    service:
-      spec:
-        externalIPs:
-          - ${LB_IP}
     logs:
       enabled: true
       timezone: Europe/Berlin

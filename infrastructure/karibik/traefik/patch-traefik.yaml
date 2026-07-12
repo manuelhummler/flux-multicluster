@@ -1,0 +1,16 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: traefik
+spec:
+  values:
+    # run on every node to reduce downtime
+    deployment:
+      kind: DaemonSet
+    # configure hetzner loadbalancer here
+    service:
+      annotations:
+        # will deploy the loadbalancer in falkenstein (germany) nearest point of the servers should be used
+        load-balancer.hetzner.cloud/location: "fsn1"
+        load-balancer.hetzner.cloud/name: "port-royal"
+        load-balancer.hetzner.cloud/use-private-ip: "true"

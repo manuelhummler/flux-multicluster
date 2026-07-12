@@ -8,14 +8,10 @@ spec:
   url: https://github.com/traefik/traefik-helm-chart
   ref:
     # should match helm chart version
-    tag: v41.0.1
+    tag: v41.0.2
   # only add traefik crds
   ignore: |
     # exclude
     /*
-    traefik/crds/gateway-standard-install.yaml
-    traefik/crds/kustomization.yaml
     # include
-    # only needed when traefik hub is needed
-    #!traefik-crds/crds-files/hub
     !traefik/crds
