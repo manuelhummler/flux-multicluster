@@ -24,7 +24,7 @@ spec:
     url: ssh://git@github.com/manuelhummler/flux-multicluster
     ref: "refs/heads/main"
     path: "clusters/karibik"
-#    pullSecret: "flux-system"
+    pullSecret: "flux-system"
   kustomize:
     patches:
       - target:
