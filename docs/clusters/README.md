@@ -28,7 +28,7 @@ Dokumentation der Kubernetes-Cluster und der zugrunde liegenden Hetzner-Infrastr
 | --------- | ------------- | ---------------------------------------- |
 | vSwitch      | `black-pearl` | Layer-2-Verbindung der Root-Server       |
 | VLAN         | `tortuga`     | VLAN ID `4000`, Subnetz `10.0.0.0/16`, Gateway `10.0.1.1` |
-| LoadBalancer | `k8s-cp-lb`   | Public IP `142.132.246.190`. Balanced Control-Plane-Traffic (Port `6443`) auf `barbossa-kube` + `gibbs-kube` |
+| LoadBalancer | `fontaene-der-jugend`   | Public IP `142.132.246.190`. Balanced Control-Plane-Traffic (Port `6443`) auf `barbossa-kube` + `gibbs-kube` |
 
 - Kein IPv6 konfiguriert (einige Anwendungen unterstützen es nicht).
 - MTU im VLAN: `1400`.
