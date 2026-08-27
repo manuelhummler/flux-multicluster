@@ -8,7 +8,7 @@ spec:
   url: https://github.com/traefik/traefik-helm-chart
   ref:
     # should match helm chart version
-    tag: v41.0.2
+    tag: v41.4.0
   # only add traefik crds
   ignore: |
     # exclude
