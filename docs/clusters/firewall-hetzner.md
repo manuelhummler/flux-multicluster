@@ -79,8 +79,8 @@ Datei: [`nftables/karibik-node.nft`](nftables/karibik-node.nft) → wird zu `/et
 
 | Variable     | barbossa-kube         | gibbs-kube                      | Bedeutung                                  |
 | ------------ | --------------------- | ------------------------------- | ------------------------------------------ |
-| `pub_if`     | `eno1` ⚠️             | `eth0` ✅                       | öffentliches Interface (`ip -br a`)        |
-| `priv_if`    | `eno1.4000` ⚠️        | `enp7s0` ✅                     | privates Interface (VLAN bzw. Cloud-Network) |
+| `pub_if`     | `eno1` ✅             | `eth0` ✅                       | öffentliches Interface (`ip -br a`)        |
+| `priv_if`    | `eno1.4000` ✅        | `enp7s0` ✅                     | privates Interface (VLAN bzw. Cloud-Network) |
 | `admin_ips`  | _(auskommentiert)_    | _(auskommentiert)_              | optional: feste Admin-IP/VPN statt „SSH von überall" |
 
 **Cluster-weit gleich:** `priv_net 10.0.0.0/16`, `pod_net 172.22.0.0/16`, `svc_net
@@ -133,6 +133,7 @@ maxretry = 5
 
 [sshd]
 enabled = true
+backend = systemd   # Ubuntu 24.04 hat kein /var/log/auth.log mehr
 EOF
 sudo systemctl enable --now fail2ban
 sudo fail2ban-client status sshd
@@ -149,8 +150,9 @@ Sicherheitsproblem, es ist der Ingress). Wer das unterbinden will, aktiviert die
 Regel `iifname $pub_if ct state new drop` in `forward` – erst nachdem alles läuft.
 
 **IPv6:** Die Tabelle ist vom Typ `inet` und gilt damit für IPv4 **und** IPv6. Das ist
-relevant, weil `gibbs` vom Hetzner-Cloud-Image automatisch eine globale IPv6 auf `eth0` bekommt
-(`2a01:4f8:1c19:6e1f::1/64`), obwohl im Cluster kein IPv6 genutzt wird. IPv6-Inbound wird
+relevant, weil beide Nodes eine globale IPv6 auf dem Public-Interface haben (`barbossa`:
+`2a01:4f8:241:4a54::2/64`, `gibbs`: `2a01:4f8:1c19:6e1f::1/64`), obwohl im Cluster kein IPv6
+genutzt wird. IPv6-Inbound wird
 genauso gedroppt; offen bleiben nur ICMPv6 (Neighbor Discovery) und bestehende Verbindungen.
 
 ## Rollout – Schritt für Schritt (pro Node)
@@ -195,7 +197,7 @@ ip route show default      # Interface der Default-Route = pub_if
 
 | Node            | `pub_if`       | `priv_if`          | private IP  |
 | --------------- | -------------- | ------------------ | ----------- |
-| `barbossa-kube` | ⚠️ `eno1`      | ⚠️ `eno1.4000`     | `10.0.1.3`  |
+| `barbossa-kube` | `eno1` ✅ (statisch) | `eno1.4000` ✅   | `10.0.1.3`  |
 | `gibbs-kube`    | `eth0` ✅ (DHCP)  | `enp7s0` ✅        | `10.0.0.2`  |
 
 ### 3. nftables installieren und Config einspielen
@@ -271,12 +273,13 @@ ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password hummli@116.2
 
 ## Status / offene Punkte
 
-- [ ] SSH-Härtung auf allen Nodes (Key-only, kein Root-Login, fail2ban)
-- [ ] Vorab-Check: etcd/apiserver-Advertise-IPs geprüft
-- [ ] Vorab-Check: LB `fontaene-der-jugend` nutzt Private-Targets
-- [ ] `gibbs-kube`: Interfaces eingetragen, nftables aktiv, Health ok
-- [ ] `barbossa-kube`: Interfaces eingetragen, nftables aktiv, Health ok
-- [ ] `nmap`-Verifizierung von außen
+- [x] SSH-Härtung auf allen Nodes: Key-only, kein Root-Login, passwortloses sudo – 2026-10-10
+- [x] fail2ban auf allen Nodes aktiv (Journal-Backend), erste Scanner-IPs gebannt – 2026-10-10
+- [x] Vorab-Check: etcd advertised **Public-IPs** (`116.202.230.235:2380`, `88.99.225.74:2380`) → Regel 8 zwingend – 2026-10-10
+- [x] Vorab-Check: LB `fontaene-der-jugend` nutzt Private-Targets – gibbs als Cloud-Server-Target (`10.0.0.2`), barbossa als Dedicated-IP-Target (`10.0.1.3`); `ufw` auf beiden Nodes inactive – 2026-10-10
+- [x] `gibbs-kube`: nftables aktiv (`eth0`/`enp7s0`), Cluster-Health ok (Nodes `Ready`, Cilium `OK`), SSH-Scanner laufen ins Rate-Limit – 2026-10-10
+- [x] `barbossa-kube`: nftables aktiv (`eno1`/`eno1.4000`), Cluster-Health ok (Nodes `Ready`, beide etcd `Running`, Cilium `OK`) – 2026-10-10
+- [x] `nmap`-Verifizierung von außen: beide Nodes nur `22` open, alle ⛔-Ports sowie `80`/`443`/`6443` `filtered` – 2026-10-10
 - [ ] Beim 3. Node: `node_pub_ips` auf allen Nodes ergänzen + Firewall auf dem neuen Node
 - [ ] Später (optional): `advertiseAddress` auf private IPs umstellen → Regel 8 entfällt
 - [ ] Später (optional): SSH auf feste Admin-IP/VPN einschränken (`admin_ips` einkommentieren)
