@@ -162,8 +162,17 @@ sudo adduser hummli
 sudo usermod -aG sudo hummli
 ```
 
-Optional: SSH-Key hinterlegen (Login ohne Passwort) und ggf. passwortloses sudo. Die
-kubeconfig (Schritt 8) wird als dieser User eingerichtet.
+SSH-Key hinterlegen (siehe [ssh-zugang.md](ssh-zugang.md)) und passwortloses sudo einrichten –
+als Drop-in-Datei, die vor dem Aktivieren per `visudo -c` syntaxgeprüft wird (ein Fehler in
+sudoers würde `sudo` komplett blockieren):
+
+```bash
+echo 'hummli ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/hummli >/dev/null   && sudo chmod 0440 /etc/sudoers.d/hummli   && sudo visudo -c
+```
+
+Test in einer **neuen** Session: `sudo -n true && echo OK`. Mit Key-only-SSH (siehe Firewall-
+Doku, SSH-Härtung) ist das der übliche Kompromiss. Die kubeconfig (Schritt 8) wird als dieser
+User eingerichtet.
 
 ## 7. kubeadm-Konfiguration (Control-Plane / Root-Server)
 
@@ -447,6 +456,13 @@ helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-opera
 > Nächster Schritt: eine `FluxInstance`-Ressource anlegen, die auf dieses Git-Repository
 > zeigt (Cluster-Pfad `clusters/<cluster-name>`), damit Flux die Infrastruktur aus dem Repo
 > synchronisiert.
+
+## 15. Host-Firewall (nftables)
+
+Jeder Node bekommt eine Host-Firewall, die das öffentliche Interface bis auf SSH (Admin-IPs)
+und ICMP schließt – insbesondere die in Schritt 7 auf `0.0.0.0` exponierten Metrics-Ports
+(`2381`, `10257`, `10259`) sowie `etcd` und `kubelet`. Rollout mit Lockout-Schutz, Regelwerk
+und Verifizierung: siehe [firewall-hetzner.md](firewall-hetzner.md).
 
 ## Nächste Schritte
 

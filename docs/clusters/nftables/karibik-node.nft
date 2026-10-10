@@ -1,0 +1,93 @@
+#!/usr/sbin/nft -f
+# Host-Firewall für Karibik-Cluster-Nodes (barbossa-kube, gibbs-kube, ...)
+# Ziel: /etc/nftables.conf
+#
+# Modell: Das öffentliche Interface ist dicht (nur SSH von Admin-IPs + ICMP);
+# privates Hetzner-Netz, Cilium-/Pod-Interfaces und Loopback werden vertraut.
+# Dokumentation: docs/clusters/firewall-hetzner.md
+#
+# ACHTUNG: Kein "flush ruleset" verwenden! Das würde auch die iptables-nft-Regeln
+# von Cilium und dem portmap-CNI-Plugin löschen. Es wird nur die eigene Tabelle
+# "inet filter" idempotent neu aufgebaut.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ⚠️ Pro Node anpassen (Interface-Namen via `ip -br a` ermitteln)
+# ─────────────────────────────────────────────────────────────────────────────
+define pub_if    = "eno1"        # ⚠️ öffentliches Interface  (barbossa: eno1, gibbs: eth0)
+define priv_if   = "eno1.4000"   # ⚠️ privates Interface      (barbossa: eno1.4000, gibbs: enp7s0)
+# define admin_ips = { 203.0.113.10 }   # optional: feste Admin-IP(s)/VPN, siehe SSH-Regel unten
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cluster-weit gleich
+# ─────────────────────────────────────────────────────────────────────────────
+define priv_net     = 10.0.0.0/16                       # Hetzner VLAN tortuga / Cloud-Network
+define pod_net      = 172.22.0.0/16                     # Pod-Subnetz (kubeadm podSubnet)
+define svc_net      = 172.20.0.0/16                     # Service-Subnetz (kubeadm serviceSubnet)
+define node_pub_ips = { 116.202.230.235, 88.99.225.74 } # Public-IPs aller Cluster-Nodes (barbossa, gibbs) – 3. Node ergänzen
+define cp_lb_ip     = 142.132.246.190                   # Control-Plane-LB fontaene-der-jugend
+
+table inet filter {}
+flush table inet filter
+
+table inet filter {
+
+  # Dynamisches Set für SSH-Rate-Limit pro Quell-IP (Brute-Force-Bremse)
+  set ssh_ratelimit {
+    type ipv4_addr
+    flags dynamic
+    timeout 10m
+  }
+
+  chain input {
+    type filter hook input priority filter; policy drop;
+
+    # Loopback + bestehende Verbindungen
+    iif "lo" accept
+    ct state established,related accept
+    ct state invalid drop
+
+    # Vertrauenswürdige Interfaces: privates Netz, Cilium- und Pod-Interfaces
+    iifname $priv_if accept
+    iifname { "cilium_host", "cilium_net", "cilium_vxlan" } accept
+    iifname "lxc*" accept
+    iifname != $pub_if ip saddr { $priv_net, $pod_net, $svc_net } accept
+
+    # ICMP (Ping, Path-MTU-Discovery – wichtig bei MTU 1400 im VLAN)
+    ip protocol icmp accept
+    meta l4proto ipv6-icmp accept
+
+    # DHCP-Antworten (Hetzner Cloud vergibt die Public-IP per DHCP)
+    iifname $pub_if udp sport 67 udp dport 68 accept
+
+    # SSH – von überall (Admin wechselt regelmäßig Standort/IP), aber max. 6 neue
+    # Verbindungen pro Minute *pro Quell-IP*. Zusätzlich auf dem Node: Key-only-SSH,
+    # kein Root-Login, fail2ban (siehe firewall-hetzner.md).
+    iifname $pub_if tcp dport 22 ct state new \
+      add @ssh_ratelimit { ip saddr limit rate 6/minute burst 10 packets } accept
+    # Alternative mit fester Admin-IP/VPN (admin_ips oben einkommentieren):
+    # iifname $pub_if ip saddr $admin_ips tcp dport 22 accept
+
+    # Cluster-Peers über Public-IPs: etcd (2379/2380) + kube-apiserver (6443).
+    # Nötig, solange etcd/apiserver ihre Public-IP advertisen (kubeadm-Default ohne
+    # localAPIEndpoint.advertiseAddress). Traffic ist mTLS-verschlüsselt.
+    iifname $pub_if ip saddr $node_pub_ips tcp dport { 2379, 2380, 6443 } accept
+
+    # OPTIONAL: nur falls der Control-Plane-LB Public-Targets nutzt (statt privates Netz)
+    # iifname $pub_if ip saddr $cp_lb_ip tcp dport 6443 accept
+
+    # Geblockter Traffic auf dem Public-Interface: gedrosselt loggen (journalctl -k)
+    iifname $pub_if limit rate 5/minute log prefix "nft-drop-in: " counter
+  }
+
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    # Pod-zu-Pod-/Pod-Egress-Traffic wird von Cilium (NetworkPolicy) gefiltert, nicht hier.
+    # OPTIONAL (strikt): neue Verbindungen vom Public-Interface nicht an Pods
+    # weiterleiten (betrifft hostPort/DNAT, z. B. Traefik direkt auf der Node-Public-IP):
+    # iifname $pub_if ct state new drop
+  }
+
+  chain output {
+    type filter hook output priority filter; policy accept;
+  }
+}

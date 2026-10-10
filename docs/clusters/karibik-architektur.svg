@@ -1,0 +1,209 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1312" font-family="'Trebuchet MS', 'Segoe UI', sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Karibik – Hochverfügbares Kubernetes-Cluster auf Hetzner</title>
+  <desc id="d">Architektur des HA-Kubernetes-Clusters "karibik": Der LoadBalancer fontaene-der-jugend verteilt Anfragen auf die drei Nodes barbossa-kube, gibbs-kube und captain-kube. Betrieben per GitOps mit Flux, laeuft darauf die Open-Source-Buchhaltung Hopps fuer Vereine.</desc>
+
+  <defs>
+    <radialGradient id="parch" cx="50%" cy="38%" r="75%">
+      <stop offset="0%" stop-color="#f6ead0"/>
+      <stop offset="70%" stop-color="#eeddb9"/>
+      <stop offset="100%" stop-color="#e2cd9f"/>
+    </radialGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2c6b78"/>
+      <stop offset="100%" stop-color="#1d4d58"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#3a2a17" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <!-- Parchment background -->
+  <rect width="1200" height="1312" fill="url(#parch)"/>
+  <g opacity="0.10" fill="#7a5a2e">
+    <circle cx="80" cy="120" r="220"/>
+    <circle cx="1120" cy="1230" r="240"/>
+  </g>
+
+  <!-- Rope frame -->
+  <rect x="26" y="26" width="1148" height="1260" rx="14" fill="none" stroke="#8a6a34" stroke-width="7"/>
+  <rect x="34" y="34" width="1132" height="1244" rx="10" fill="none" stroke="#c9a24a" stroke-width="3" stroke-dasharray="2 12" stroke-linecap="round"/>
+
+  <!-- ===== Header ===== -->
+  <text x="600" y="108" text-anchor="middle" font-size="52" font-weight="800" fill="#3a2a17" letter-spacing="1">⚓ Cluster „karibik“ ☠️</text>
+  <text x="600" y="150" text-anchor="middle" font-size="24" fill="#6b4f2a" font-weight="600">Hochverfügbares Kubernetes auf Hetzner · GitOps mit Flux</text>
+  <text x="600" y="182" text-anchor="middle" font-size="19" fill="#8a6a34" font-style="italic">Die Crew hinter der Open-Source-Buchhaltung für Vereine</text>
+
+  <!-- Compass rose -->
+  <g transform="translate(1078,150)" opacity="0.9">
+    <circle r="46" fill="none" stroke="#8a6a34" stroke-width="2"/>
+    <circle r="34" fill="none" stroke="#8a6a34" stroke-width="1" stroke-dasharray="2 5"/>
+    <polygon points="0,-42 8,0 0,10 -8,0" fill="#a83232"/>
+    <polygon points="0,42 8,0 0,-10 -8,0" fill="#3a2a17"/>
+    <polygon points="42,0 0,8 -10,0 0,-8" fill="#3a2a17"/>
+    <polygon points="-42,0 0,8 10,0 0,-8" fill="#3a2a17"/>
+    <text x="0" y="-50" text-anchor="middle" font-size="12" font-weight="700" fill="#a83232">N</text>
+  </g>
+
+  <!-- ===== ① ZUGANG ===== -->
+  <text x="70" y="232" font-size="15" font-weight="700" fill="#a83232" letter-spacing="2">① AN LAND · ZUGANG</text>
+
+  <!-- Users -->
+  <g filter="url(#soft)">
+    <rect x="70" y="248" width="250" height="92" rx="12" fill="#fbf3df" stroke="#8a6a34" stroke-width="2"/>
+  </g>
+  <text x="195" y="288" text-anchor="middle" font-size="21" font-weight="700" fill="#3a2a17">🧭 Vereine &amp; Nutzer</text>
+  <text x="195" y="316" text-anchor="middle" font-size="15" fill="#6b4f2a">jederzeit &amp; sicher erreichbar</text>
+
+  <!-- arrow to LB -->
+  <line x1="320" y1="294" x2="392" y2="294" stroke="#a83232" stroke-width="3" stroke-dasharray="6 6"/>
+  <polygon points="392,294 380,288 380,300" fill="#a83232"/>
+
+  <!-- LoadBalancer -->
+  <g filter="url(#soft)">
+    <rect x="400" y="242" width="730" height="104" rx="12" fill="url(#sea)" stroke="#12363e" stroke-width="2"/>
+  </g>
+  <text x="430" y="282" font-size="22" font-weight="800" fill="#ffe9b8">⛲ LoadBalancer „fontaene-der-jugend“</text>
+  <text x="430" y="310" font-size="15" fill="#cfe7ec">verteilt jede Anfrage auf einen gesunden Node</text>
+  <text x="430" y="332" font-size="14" fill="#a7ccd3" font-style="italic">Fountain of Youth – hält den Cluster am Leben, egal welcher Node gerade schläft</text>
+
+  <!-- flow down -->
+  <line x1="600" y1="346" x2="600" y2="388" stroke="#a83232" stroke-width="3"/>
+  <line x1="880" y1="346" x2="880" y2="388" stroke="#a83232" stroke-width="3"/>
+  <polygon points="600,388 594,376 606,376" fill="#a83232"/>
+  <polygon points="880,388 874,376 886,376" fill="#a83232"/>
+
+  <!-- ===== ② DIE FLOTTE ===== -->
+  <text x="70" y="420" font-size="15" font-weight="700" fill="#a83232" letter-spacing="2">② DIE FLOTTE · 3 NODES FÜR ECHTE HOCHVERFÜGBARKEIT</text>
+
+  <!-- Card template: barbossa -->
+  <g filter="url(#soft)">
+    <rect x="70" y="436" width="340" height="138" rx="12" fill="#fbf3df" stroke="#8a6a34" stroke-width="2"/>
+  </g>
+  <path d="M70 448 a12 12 0 0 1 12 -12 h316 a12 12 0 0 1 12 12 v34 h-340 z" fill="#3a2a17"/>
+  <text x="90" y="469" font-size="21" font-weight="800" fill="#ffe9b8">🏴‍☠️ barbossa-kube</text>
+  <text x="393" y="469" text-anchor="end" font-size="12.5" fill="#c9a24a">Kapitän</text>
+  <text x="90" y="510" font-size="15" fill="#6b4f2a">der große Root-Server · Flaggschiff</text>
+  <g font-size="14" fill="#3a2a17">
+    <rect x="90" y="524" width="148" height="30" rx="6" fill="#efe0c0" stroke="#c9a24a"/>
+    <text x="164" y="544" text-anchor="middle">Control-Plane</text>
+    <rect x="250" y="524" width="142" height="30" rx="6" fill="#efe0c0" stroke="#c9a24a"/>
+    <text x="321" y="544" text-anchor="middle">Worker</text>
+  </g>
+
+  <!-- Card: gibbs -->
+  <g filter="url(#soft)">
+    <rect x="430" y="436" width="340" height="138" rx="12" fill="#fbf3df" stroke="#8a6a34" stroke-width="2"/>
+  </g>
+  <path d="M430 448 a12 12 0 0 1 12 -12 h316 a12 12 0 0 1 12 12 v34 h-340 z" fill="#3a2a17"/>
+  <text x="450" y="469" font-size="21" font-weight="800" fill="#ffe9b8">🦜 gibbs-kube</text>
+  <text x="753" y="469" text-anchor="end" font-size="12.5" fill="#c9a24a">Erster Maat</text>
+  <text x="450" y="510" font-size="15" fill="#6b4f2a">der flinke Cloud-Server</text>
+  <g font-size="14" fill="#3a2a17">
+    <rect x="450" y="524" width="148" height="30" rx="6" fill="#efe0c0" stroke="#c9a24a"/>
+    <text x="524" y="544" text-anchor="middle">Control-Plane</text>
+    <rect x="610" y="524" width="142" height="30" rx="6" fill="#efe0c0" stroke="#c9a24a"/>
+    <text x="681" y="544" text-anchor="middle">Worker</text>
+  </g>
+
+  <!-- Card: captain-kube -->
+  <g filter="url(#soft)">
+    <rect x="790" y="436" width="340" height="138" rx="12" fill="#fbf3df" stroke="#8a6a34" stroke-width="2"/>
+  </g>
+  <path d="M790 448 a12 12 0 0 1 12 -12 h316 a12 12 0 0 1 12 12 v34 h-340 z" fill="#3a2a17"/>
+  <text x="810" y="469" font-size="21" font-weight="800" fill="#ffe9b8">⚓ captain-kube</text>
+  <text x="1113" y="469" text-anchor="end" font-size="12.5" fill="#c9a24a">Der Käpt’n</text>
+  <text x="810" y="510" font-size="15" fill="#6b4f2a">der Ur-Node der Crew</text>
+  <g font-size="14" fill="#3a2a17">
+    <rect x="810" y="524" width="148" height="30" rx="6" fill="#efe0c0" stroke="#c9a24a"/>
+    <text x="884" y="544" text-anchor="middle">Control-Plane</text>
+    <rect x="970" y="524" width="142" height="30" rx="6" fill="#efe0c0" stroke="#c9a24a"/>
+    <text x="1041" y="544" text-anchor="middle">Worker</text>
+  </g>
+
+  <!-- HA-Botschaft, nicht-technisch -->
+  <text x="600" y="606" text-anchor="middle" font-size="14" fill="#6b4f2a" font-style="italic">3 Schiffe auf See – fällt eines aus, segelt die Flotte einfach weiter ⚓</text>
+
+  <!-- flow to platform -->
+  <line x1="600" y1="620" x2="600" y2="662" stroke="#a83232" stroke-width="3"/>
+  <polygon points="600,662 594,650 606,650" fill="#a83232"/>
+
+  <!-- ===== ③ SCHATZKISTE / PLATTFORM ===== -->
+  <text x="70" y="706" font-size="15" font-weight="700" fill="#a83232" letter-spacing="2">③ DIE SCHATZKISTE · PLATTFORM (GitOps)</text>
+  <g filter="url(#soft)">
+    <rect x="70" y="720" width="1060" height="196" rx="12" fill="#fbf3df" stroke="#8a6a34" stroke-width="2"/>
+  </g>
+  <text x="94" y="752" font-size="16" font-weight="700" fill="#3a2a17">🗺️ Alles als Code – Flux synchronisiert GitHub → Cluster</text>
+
+  <g font-size="14.5" fill="#3a2a17" font-weight="600">
+    <g>
+      <rect x="94" y="770" width="230" height="42" rx="8" fill="#efe0c0" stroke="#c9a24a" stroke-width="1.5"/>
+      <text x="209" y="796" text-anchor="middle">🧭 Flux · GitOps</text>
+    </g>
+    <g>
+      <rect x="340" y="770" width="230" height="42" rx="8" fill="#efe0c0" stroke="#c9a24a" stroke-width="1.5"/>
+      <text x="455" y="796" text-anchor="middle">🕸️ Cilium · Netzwerk</text>
+    </g>
+    <g>
+      <rect x="586" y="770" width="230" height="42" rx="8" fill="#efe0c0" stroke="#c9a24a" stroke-width="1.5"/>
+      <text x="701" y="796" text-anchor="middle">🚪 Traefik · Ingress</text>
+    </g>
+    <g>
+      <rect x="832" y="770" width="230" height="42" rx="8" fill="#efe0c0" stroke="#c9a24a" stroke-width="1.5"/>
+      <text x="947" y="796" text-anchor="middle">🔐 Keycloak · SSO</text>
+    </g>
+
+    <g>
+      <rect x="94" y="822" width="230" height="42" rx="8" fill="#efe0c0" stroke="#c9a24a" stroke-width="1.5"/>
+      <text x="209" y="848" text-anchor="middle">💾 Longhorn · Storage</text>
+    </g>
+    <g>
+      <rect x="340" y="822" width="230" height="42" rx="8" fill="#efe0c0" stroke="#c9a24a" stroke-width="1.5"/>
+      <text x="455" y="848" text-anchor="middle">🐘 CloudNative-PG</text>
+    </g>
+    <g>
+      <rect x="586" y="822" width="230" height="42" rx="8" fill="#efe0c0" stroke="#c9a24a" stroke-width="1.5"/>
+      <text x="701" y="848" text-anchor="middle">🗄️ MariaDB · MinIO</text>
+    </g>
+    <g>
+      <rect x="832" y="822" width="230" height="42" rx="8" fill="#efe0c0" stroke="#c9a24a" stroke-width="1.5"/>
+      <text x="947" y="848" text-anchor="middle">📈 Prometheus · Grafana</text>
+    </g>
+  </g>
+  <text x="94" y="896" font-size="13.5" fill="#8a6a34" font-style="italic">+ cert-manager · Loki · oauth2-proxy · Secrets verschlüsselt mit SOPS/age</text>
+
+  <!-- flow to workload -->
+  <line x1="600" y1="916" x2="600" y2="950" stroke="#a83232" stroke-width="3"/>
+  <polygon points="600,950 594,938 606,938" fill="#a83232"/>
+
+  <!-- ===== ④ DER SCHATZ ===== -->
+  <text x="70" y="978" font-size="15" font-weight="700" fill="#a83232" letter-spacing="2">④ DER SCHATZ · DIE ANWENDUNG</text>
+  <g filter="url(#soft)">
+    <rect x="70" y="992" width="1060" height="150" rx="12" fill="#9955cc" stroke="#6f34a6" stroke-width="2"/>
+  </g>
+  <!-- Hopps Bildmarke (Original von hopps.app, weiß) -->
+  <g transform="translate(104,1026) scale(1.7)">
+    <path d="M13.9501 26.7351C12.3652 27.2393 12.0377 31.6634 14.166 38.3548C15.3313 42.0182 16.9901 45.5985 18.5146 48.0091H22.415C22.3124 45.3133 21.4716 41.1397 20.3456 36.945C18.5282 30.1782 15.5335 26.231 13.9501 26.7351Z" fill="#ffffff"/>
+    <path d="M7.78266 18.1842C7.96832 15.0823 11.7057 13.6287 13.9125 15.8159C18.2445 20.1087 23.7479 29.4582 24.6732 48.0091H27.3857C27.7223 41.2619 28.6627 35.4778 29.9321 31.0174C30.3019 29.7208 31.3374 28.7231 32.6415 28.3865L33.2091 28.24L40.717 26.3065C42.7442 25.7842 44.8679 26.708 45.8702 28.5465L48.0166 32.4891V9.26192C48.0166 4.17362 43.8913 0.0483398 38.803 0.0483398H9.27096C4.18266 0.0483398 0.057373 4.17362 0.057373 9.26192V38.794C0.057373 43.8823 4.18266 48.0076 9.27096 48.0076H16.071C12.2008 42.4046 6.95096 32.0966 7.78417 18.1827L7.78266 18.1842Z" fill="#ffffff"/>
+    <path d="M45.9775 37.105C39.896 35.9397 35.9126 33.674 33.5216 31.8204C32.8605 33.2665 32.2356 34.9872 31.7103 36.945C30.5843 41.1382 29.745 45.3118 29.6409 48.0091H33.5428C35.0658 45.5986 36.7262 42.0182 37.8899 38.3548C38.1511 37.5321 38.376 36.7427 38.5662 35.9925C39.3828 36.6189 40.2899 37.2484 41.2982 37.8672C39.6907 42.1102 37.7028 45.5246 35.9865 48.0106H38.8016C43.8899 48.0106 48.0152 43.8853 48.0152 38.797V36.5752C47.4884 37.025 46.7684 37.2589 45.976 37.108L45.9775 37.105Z" fill="#ffffff"/>
+  </g>
+  <text x="210" y="1046" font-size="27" font-weight="800" fill="#ffffff">Hopps — Open-Source-Buchhaltung für Vereine</text>
+  <text x="210" y="1075" font-size="15" fill="#ede0f7">Damit Vereine ihre Buchhaltung sicher machen und jederzeit erreichen können</text>
+  <g font-size="14.5" fill="#ffffff" font-weight="700">
+    <rect x="210" y="1092" width="120" height="32" rx="8" fill="#7a3fb0" stroke="#d9b3f0" stroke-width="1"/>
+    <text x="270" y="1113" text-anchor="middle">prod</text>
+    <rect x="342" y="1092" width="120" height="32" rx="8" fill="#7a3fb0" stroke="#d9b3f0" stroke-width="1"/>
+    <text x="402" y="1113" text-anchor="middle">demo</text>
+    <rect x="474" y="1092" width="120" height="32" rx="8" fill="#7a3fb0" stroke="#d9b3f0" stroke-width="1"/>
+    <text x="534" y="1113" text-anchor="middle">dev</text>
+  </g>
+
+  <!-- ===== FOOTER ===== -->
+  <line x1="70" y1="1178" x2="1130" y2="1178" stroke="#c9a24a" stroke-width="2" stroke-dasharray="2 10" stroke-linecap="round"/>
+  <text x="70" y="1224" font-size="34" font-weight="800" fill="#3a2a17">💶 280 € / Monat</text>
+  <text x="70" y="1252" font-size="15" fill="#6b4f2a">der Preis für „immer erreichbar“ – jetzt geht’s ans Reinverdienen ⚓</text>
+  <g font-size="14" fill="#6b4f2a" text-anchor="end">
+    <text x="1130" y="1214" font-weight="700">Kubernetes v1.36 · containerd · Cilium</text>
+    <text x="1130" y="1236">3 Nodes verbunden für echte Hochverfügbarkeit</text>
+    <text x="1130" y="1258" font-style="italic">Namen im Fluch-der-Karibik-Stil 🏴‍☠️</text>
+  </g>
+</svg>

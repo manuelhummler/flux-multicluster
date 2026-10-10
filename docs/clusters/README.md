@@ -30,8 +30,12 @@ Dokumentation der Kubernetes-Cluster und der zugrunde liegenden Hetzner-Infrastr
 | VLAN         | `tortuga`     | VLAN ID `4000`, Subnetz `10.0.0.0/16`, Gateway `10.0.1.1` |
 | LoadBalancer | `fontaene-der-jugend`   | Public IP `142.132.246.190`. Balanced Control-Plane-Traffic (Port `6443`) auf `barbossa-kube` + `gibbs-kube` |
 
-- Kein IPv6 konfiguriert (einige Anwendungen unterstützen es nicht).
+- Kein IPv6 im Cluster konfiguriert (einige Anwendungen unterstützen es nicht). `gibbs` hat
+  vom Cloud-Image trotzdem eine globale IPv6 auf `eth0`; die Host-Firewall blockt IPv6-Inbound.
 - MTU im VLAN: `1400`.
+- **Firewall:** Host-Firewall mit nftables auf jedem Node (Public-Interface dicht, privates
+  Netz vertraut). Hetzner Cloud Firewall und Robot-Firewall werden bewusst **nicht** genutzt.
+  Siehe [firewall-hetzner.md](firewall-hetzner.md).
 
 ### Kubernetes-Netzwerk
 
@@ -50,3 +54,5 @@ Bewusst außerhalb des Hetzner-Netzes (`10.0.0.0/16`) gewählt, um Kollisionen z
 ## Weiterführende Dokumentation
 
 - [Node-Setup (Hetzner)](node-setup-hetzner.md) – Schritt-für-Schritt-Anleitung zum Aufsetzen eines Nodes.
+- [Firewall-Konzept (Hetzner)](firewall-hetzner.md) – Host-Firewall (nftables) pro Node, Port-Referenz, Rollout mit Lockout-Schutz.
+- [SSH-Zugang](ssh-zugang.md) – lokale `~/.ssh/config` mit Aliasen (`ssh barbossa`, `ssh gibbs`), Key-Setup.
