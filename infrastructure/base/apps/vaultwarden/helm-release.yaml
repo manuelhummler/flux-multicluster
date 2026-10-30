@@ -80,7 +80,7 @@ spec:
       host: w01d5c3f.kasserver.com
       port: 465
       authMechanism: 'Login'
-      from: mail@hopps.app
+      from: info@hopps.app
       fromName: "Hopps Open Project"
       existingSecret: vaultwarden-secret
       username:
