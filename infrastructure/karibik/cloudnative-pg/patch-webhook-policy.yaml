@@ -1,0 +1,21 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-ingress-from-node-to-webhook
+  namespace: cnpg-system
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: cloudnative-pg
+  ingress:
+    # Die kube-apiserver-Entity besteht aus den IPs der kubernetes-Endpoints, auf karibik sind das
+    # die oeffentlichen Node-IPs. Der Webhook-Aufruf des apiservers vom jeweils anderen Node kommt
+    # aber ueber das private VLAN (VXLAN-Tunnel) und traegt daher die Identitaet remote-node, vom
+    # eigenen Node die Identitaet host. Beide zulassen, sonst: "failed calling webhook ... timeout".
+    - fromEntities:
+        - kube-apiserver
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "9443"
