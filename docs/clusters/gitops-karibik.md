@@ -46,7 +46,7 @@ Cluster-Secrets.
 | Phase | Inhalt | Status |
 | ----- | ------ | ------ |
 | **0** | Fundament: Secrets/SOPS, cert-manager, cluster-issuer, metrics-server, longhorn, Cilium-Adoption | **erledigt 2026-11-03** |
-| 1 | Datenschicht: minio, Postgres (Konsolidierung Zalando ↔ CNPG), mariadb | offen |
+| 1 | Datenschicht: CloudNative-PG (statt Zalando), MariaDB Galera; **kein MinIO** (Backups → DigitalOcean) | **in Arbeit** |
 | 2 | Plattform/Auth: keycloak, oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | offen |
 | 3 | Apps: vaultwarden, kimai, dtrack, apicurio, juno-care, fest-der-demokratie, minecraft, hopps-* | offen |
 | 4 | captain-kube leerräumen & neu aufsetzen / als 3. Node rejoinen | offen |
@@ -200,6 +200,58 @@ kubectl --context karibik get helmrelease -A
 ```
 
 ---
+
+## 4b. Phase 1 – Datenschicht
+
+### Entscheidungen (2026-11-03)
+
+| Thema | Entscheidung | Begründung |
+| ----- | ------------ | ---------- |
+| Postgres-Operator | **nur CloudNative-PG**, kein Zalando auf karibik | Zalando hält auf captain-kube nur noch keycloak, vaultwarden, dtrack (2,1 GB / 14 MB / 10 MB). Alles Neuere (apicurio, alle hopps-Umgebungen) läuft bereits auf CNPG inkl. Barman-Backups. Umzug per `pg_dump`/`pg_restore` (PG 16 → 17). |
+| Objektspeicher | **kein MinIO auf karibik** | MinIO enthielt ausschließlich DB-Backups (16 GB Zalando-Dumps, 1,8 GB CNPG, 0,9 GB mariadb). Backups gehen in den vorhandenen DigitalOcean-Space `hopps` (fra1), der schon heute vom mariadb-operator und vom Zalando-Logical-Backup genutzt wird. Off-Site bei einem anderen Anbieter ist für Backups wertvoller als Nähe; preislich liegen DO Spaces (5 $/250 GiB) und Hetzner Object Storage (6,49 €/1 TB) bei unserem Volumen gleichauf. |
+| MariaDB | **Galera mit 3 Replikaten von Anfang an**, ohne Anti-Affinity | siehe unten |
+
+### MariaDB Galera auf 2 Nodes („Variante A")
+
+Der mariadb-operator (Admission-Webhook) erlaubt Galera **nur mit `replicas` > 1 und ungerade**
+(gerade nur mit `replicasAllowEvenNumber`). Eine Einzelinstanz mit Galera ist nicht möglich, und
+ein späteres Einschalten von Galera auf einer Einzelinstanz ist nicht als Migrationspfad dokumentiert.
+
+Deshalb startet karibik direkt mit **3 Galera-Pods auf 2 Nodes** (Overlay
+[infrastructure/karibik/mariadb/](../../infrastructure/karibik/mariadb/)):
+
+- `affinity.antiAffinityEnabled: false` – die Pods verteilen sich 2+1 auf die Nodes. Mit Anti-Affinity
+  bliebe der 3. Pod Pending und der Cluster würde nicht bootstrappen.
+- Fällt der Node mit **1** Pod aus → Quorum 2/3 bleibt, Betrieb läuft weiter.
+- Fällt der Node mit **2** Pods aus → kein Quorum; die Operator-Recovery (`galera.recovery`,
+  `minClusterSize: 1`, aus der Base) bootstrappt den Cluster vom verbliebenen Pod neu. Kurzer Ausfall,
+  kein manueller Eingriff.
+- MaxScale mit **2** Replikaten (reicht laut Operator-Doku für unterbrechungsfreie Upgrades).
+- Backup: nur `backup-digital-ocean`, Prefix **`karibik-mariadb`** (captain-kube nutzt
+  `hopps-cloud-mariadb` – getrennte Prefixe, sonst löscht `maxRetention` fremde Backups).
+  Das MinIO-Backup der Base wird per `$patch: delete` entfernt.
+- Die kimai-Objekte (`Database`/`User`/`Grant` im Namespace `kimai`) sind ebenfalls per Delete-Patch
+  ausgeblendet, bis kimai in Phase 3 umzieht – dann die drei Patches entfernen.
+- Secret `mariadb-secret` enthält nur die DigitalOcean-Keys (übernommen aus captain-kube, neu
+  verschlüsselt für `infrastructure/karibik/.sops.yaml`).
+
+**Beim 3. Node (Phase 4):**
+
+1. In `patch-mariadb.yaml` `antiAffinityEnabled: true` setzen (optional auch für MaxScale und auf 3
+   Replikate erhöhen).
+2. Pushen; der Operator rollt die Pods nacheinander neu, sie verteilen sich auf drei Nodes.
+3. Prüfen: `kubectl -n mariadb get pods -o wide` (ein Pod pro Node), `kubectl get mariadb -n mariadb`.
+
+Keine Änderung an `replicas` oder an Daten nötig.
+
+### Noch offen in Phase 1
+
+- cloudnative-pg-operator + CNPG-Cluster mit Rollen/Datenbanken für apicurio-registry, apicurio-studio,
+  keycloak, dtrack, vaultwarden; Barman-Backup nach DigitalOcean (eigener Prefix).
+- Für keycloak, dtrack, vaultwarden wechselt das Credential-Muster von Zalando (automatisches Secret
+  `<user>.<cluster>.credentials.postgresql.acid.zalan.do` im App-Namespace) zu CNPG
+  (`managed.roles[].passwordSecret` im cnpg-Namespace **und** dasselbe SOPS-Secret im App-Namespace,
+  wie heute bei apicurio).
 
 ## 5. Rezept: weitere App nach karibik holen (Phase 1-3)
 

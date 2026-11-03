@@ -1,0 +1,18 @@
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: MariaDB
+metadata:
+  name: mariadb-galera
+  namespace: mariadb
+spec:
+  # Galera verlangt replicas > 1 und eine ungerade Zahl (Admission-Webhook des Operators).
+  # karibik hat derzeit 2 Nodes: 3 Pods verteilen sich 2+1. Faellt der Node mit 1 Pod aus,
+  # bleibt das Quorum (2/3) erhalten; faellt der Node mit 2 Pods aus, bootstrappt die
+  # Operator-Recovery (galera.recovery in der Base, minClusterSize: 1) den Cluster neu.
+  replicas: 3
+  storage:
+    size: 10Gi
+    storageClassName: longhorn
+  # Anti-Affinity bewusst AUS, solange nur 2 Nodes da sind – sonst bleibt der 3. Pod Pending
+  # und der Cluster bootstrappt nicht. Beim 3. Node auf true setzen (siehe Doku).
+  affinity:
+    antiAffinityEnabled: false

@@ -1,0 +1,8 @@
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: MaxScale
+metadata:
+  name: maxscale-galera
+  namespace: mariadb
+spec:
+  # 2 Replikate reichen laut Operator-Doku fuer unterbrechungsfreie MaxScale-Upgrades.
+  replicas: 2

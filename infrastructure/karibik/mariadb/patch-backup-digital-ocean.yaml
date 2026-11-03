@@ -1,0 +1,11 @@
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Backup
+metadata:
+  name: backup-digital-ocean
+  namespace: mariadb
+spec:
+  storage:
+    s3:
+      # Eigener Prefix pro Cluster! captain-kube schreibt nach hopps-cloud-mariadb;
+      # ein gemeinsamer Prefix wuerde durch maxRetention die Backups des anderen Clusters loeschen.
+      prefix: karibik-mariadb

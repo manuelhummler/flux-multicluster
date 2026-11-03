@@ -1,0 +1,62 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# MariaDB Galera auf karibik – siehe docs/clusters/gitops-karibik.md, Phase 1.
+# Variante A: 3 Galera-Replikate von Anfang an, ohne Anti-Affinity (2 Nodes).
+# Beim 3. Node nur patch-mariadb.yaml anpassen (antiAffinityEnabled: true).
+resources:
+  - ../../base/apps/mariadb
+patches:
+  - path: patch-mariadb.yaml
+  - path: patch-maxscale.yaml
+  - path: patch-backup-digital-ocean.yaml
+  # Kein MinIO auf karibik: das MinIO-Backup aus der Base entfernen,
+  # es bleibt nur backup-digital-ocean (DigitalOcean Space, wie auf captain-kube).
+  - target:
+      kind: Backup
+      name: backup
+    patch: |
+      $patch: delete
+      apiVersion: k8s.mariadb.com/v1alpha1
+      kind: Backup
+      metadata:
+        name: backup
+        namespace: mariadb
+  # kimai-Datenbank/User/Grant liegen im Namespace kimai, der erst in Phase 3 kommt.
+  # Diese drei Delete-Patches entfernen, sobald kimai nach karibik umzieht.
+  - target:
+      kind: Database
+      name: kimai
+    patch: |
+      $patch: delete
+      apiVersion: k8s.mariadb.com/v1alpha1
+      kind: Database
+      metadata:
+        name: kimai
+        namespace: kimai
+  - target:
+      kind: User
+      name: kimai
+    patch: |
+      $patch: delete
+      apiVersion: k8s.mariadb.com/v1alpha1
+      kind: User
+      metadata:
+        name: kimai
+        namespace: kimai
+  - target:
+      kind: Grant
+      name: kimai
+    patch: |
+      $patch: delete
+      apiVersion: k8s.mariadb.com/v1alpha1
+      kind: Grant
+      metadata:
+        name: kimai
+        namespace: kimai
+generatorOptions:
+  disableNameSuffixHash: true
+secretGenerator:
+  - name: mariadb-secret
+    namespace: mariadb
+    envs:
+      - secret-encrypted.env
