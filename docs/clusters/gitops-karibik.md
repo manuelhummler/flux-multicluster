@@ -49,7 +49,7 @@ Cluster-Secrets.
 | 1 | Datenschicht: CloudNative-PG (statt Zalando), MariaDB Galera; **kein MinIO** (Backups → DigitalOcean) | **erledigt 2026-11-03** (Daten ziehen pro App in Phase 2/3 um) |
 | 2 | Plattform/Auth: keycloak, oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | offen |
 | 3 | Apps: vaultwarden, kimai, dtrack, apicurio, juno-care, fest-der-demokratie, minecraft, hopps-* | offen |
-| 4 | captain-kube leerräumen & neu aufsetzen / als 3. Node rejoinen | offen |
+| 4 | captain-kube leerräumen & als 3. Node rejoinen; **danach** Control-Plane auf private IPs (siehe 4c) | offen |
 
 ---
 
@@ -290,6 +290,56 @@ Diagnose: `hubble observe --to-namespace <ns> --port <webhook-port>` auf dem Cil
    `pg_restore -U postgres -d <db> --no-owner --role=<rolle>` im CNPG-Primary. App auf captain-kube
    vorher stoppen (Scale 0), damit kein Stand verloren geht.
 4. App auf karibik starten, prüfen, DNS umbiegen.
+
+## 4c. Phase 4 – Control-Plane auf private IPs umstellen (erst nach dem 3. Node)
+
+> **Voraussetzung:** Alle Apps sind von captain-kube migriert und captain-kube ist als 3. Node in
+> karibik gejoint. Vorher **nicht** anfassen: etcd hat mit 2 Membern keine Fehlertoleranz – jeder
+> Member-Neustart kostet das Quorum, ein Fehler an der Peer-URL heißt etcd-Handarbeit.
+
+**Ist-Stand (2026-11-04):** Pod-Verkehr zwischen den Nodes läuft bereits über den Cilium-VXLAN-Tunnel
+auf den privaten IPs (kubelet `--node-ip=10.0.1.3`, LB-Targets privat). Nur die Control-Plane
+advertised die **öffentlichen** IPs, weil kubeadm beim Init ohne `advertiseAddress` die IP der
+Default-Route nimmt:
+
+| Komponente | heute | Ziel |
+| --- | --- | --- |
+| `kube-apiserver --advertise-address` | 116.202.230.235 / 88.99.225.74 | 10.0.1.3 / 10.0.0.2 |
+| etcd `listen-peer-urls`, `initial-advertise-peer-urls` | `https://<public>:2380` | `https://<privat>:2380` |
+| etcd `listen-client-urls`, `advertise-client-urls` | `https://127.0.0.1:2379,https://<public>:2379` | `https://127.0.0.1:2379,https://<privat>:2379` |
+| apiserver-Zertifikat IP-SANs | 172.20.0.1, public, 142.132.246.190 | + private Node-IP |
+| nftables Regel 8 (`node_pub_ips` → 2379/2380/6443) | nötig | entfällt, Ports öffentlich komplett zu |
+
+**Warum das mehr ist als Firewall-Kosmetik:** Die `kubernetes`-Endpoints sind die öffentlichen IPs.
+Cilium hängt das Label `kube-apiserver` nur an Node-Identitäten, deren IPs zu den Endpoints passen –
+auf karibik passt keine (Node-InternalIP ist privat). Deshalb trägt der Webhook-Aufruf des apiservers
+vom anderen Node nur `remote-node` (siehe 4b, Stolperstein Webhook). Mit privaten Endpoints greift die
+Entity `kube-apiserver` wieder und der karibik-Patch wird überflüssig.
+
+**Ablauf (Wartungsfenster ~1 h, rollierend Node für Node, mit 3 etcd-Membern bleibt das Quorum):**
+
+0. `etcdctl snapshot save` auf einem Node; `kubectl get nodes` und `etcdctl member list` festhalten.
+1. **kubeadm-config** (`kubectl -n kube-system edit cm kubeadm-config`): `apiServer.certSANs` um die
+   privaten Node-IPs ergänzen, `controlPlaneEndpoint` bleibt `142.132.246.190:6443`.
+2. **Pro Node, nacheinander:**
+   1. Zertifikate neu: `kubeadm init phase certs apiserver --config <cfg>` sowie
+      `kubeadm init phase certs etcd-server` / `etcd-peer` mit der privaten IP als
+      `localAPIEndpoint.advertiseAddress` (alte Zertifikate vorher wegsichern).
+   2. etcd-Peer-URL im Cluster umstellen: `etcdctl member update <ID> --peer-urls=https://<privat>:2380`.
+   3. `/etc/kubernetes/manifests/etcd.yaml`: alle `*-urls` auf die private IP (127.0.0.1 für Client
+      beibehalten), Annotation `kubeadm.kubernetes.io/etcd.advertise-client-urls` anpassen. etcd startet neu.
+   4. `/etc/kubernetes/manifests/kube-apiserver.yaml`: `--advertise-address` und die Annotation
+      `kube-apiserver.advertise-address.endpoint` auf die private IP. apiserver startet neu.
+   5. Prüfen: `etcdctl member list` (Peer-URL privat, Member healthy), `kubectl get endpoints kubernetes`
+      zeigt die private IP dieses Nodes, `kubectl get nodes` alle Ready.
+3. Firewall: Regel 8 aus [nftables/karibik-node.nft](nftables/karibik-node.nft) entfernen, Ruleset
+   neu laden, Verbindung über den LB prüfen (`kubectl --context karibik get nodes`).
+4. Cilium: `kubectl -n cilium exec ds/cilium -- cilium ip-cache list | grep kube-apiserver` zeigt die
+   privaten Node-IPs. Danach kann `infrastructure/karibik/cloudnative-pg/patch-webhook-policy.yaml`
+   entfallen (optional – `host`/`remote-node` zuzulassen ist weiterhin korrekt).
+
+**Lernpfad:** passt zu den offenen etcd-Themen (advertise vs. listen, Peer-URL/SAN-Zusammenhang,
+`member update`) in [docs/learning/README.md](../learning/README.md).
 
 ## 5. Rezept: weitere App nach karibik holen (Phase 1-3)
 
