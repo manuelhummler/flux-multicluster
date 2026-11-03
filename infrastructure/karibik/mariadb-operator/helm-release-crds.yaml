@@ -1,0 +1,23 @@
+# CRDs des mariadb-operators als eigenes Chart (seit Chart 0.3x nicht mehr im Operator-Chart
+# enthalten, crds.enabled=false ist Default). Auf captain-kube wurden die CRDs 2024 einmalig
+# manuell per `helm install mariadb-operator-crds` (Namespace default) installiert; auf karibik
+# verwaltet Flux sie. Version im Gleichschritt mit dem Operator-Chart halten (Renovate).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: mariadb-operator-crds
+  namespace: mariadb-operator
+spec:
+  interval: 1h0m0s
+  chart:
+    spec:
+      chart: mariadb-operator-crds
+      version: 0.38.1
+      sourceRef:
+        kind: HelmRepository
+        name: mariadb-operator
+        namespace: flux-system
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
