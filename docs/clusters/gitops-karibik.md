@@ -45,7 +45,7 @@ Cluster-Secrets.
 
 | Phase | Inhalt | Status |
 | ----- | ------ | ------ |
-| **0** | Fundament: Secrets/SOPS, cert-manager, cluster-issuer, metrics-server, longhorn, (Cilium-Entscheidung) | **dieses Dokument** |
+| **0** | Fundament: Secrets/SOPS, cert-manager, cluster-issuer, metrics-server, longhorn, Cilium-Adoption | **erledigt 2026-11-03** |
 | 1 | Datenschicht: minio, Postgres (Konsolidierung Zalando ↔ CNPG), mariadb | offen |
 | 2 | Plattform/Auth: keycloak, oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | offen |
 | 3 | Apps: vaultwarden, kimai, dtrack, apicurio, juno-care, fest-der-demokratie, minecraft, hopps-* | offen |
@@ -158,10 +158,10 @@ kubectl --context karibik -n cilium rollout status ds/cilium --timeout=2m
 > Künftige Cilium-Änderungen laufen dann über das Overlay (Renovate hält die Chart-Version
 > aktuell). Werte ändern = DaemonSet-Rollout, also mit Bedacht.
 
-Die cilium-Kustomization ist mit **`suspend: true`** eingecheckt, damit die Übernahme nicht
-unbeaufsichtigt feuert. Rollout bewusst aktivieren: `suspend` in
-[clusters/karibik/infrastructure.yaml](../../clusters/karibik/infrastructure.yaml) auf `false`
-setzen, pushen, dann die beiden Befehle oben ausführen und beobachten.
+**Erledigt am 2026-11-03:** Die Kustomization war zunächst mit `suspend: true` eingecheckt und
+wurde nach Abschluss von Phase 0 bewusst aktiviert. Ergebnis wie erhofft ein No-Op: Helm-Revision 2
+„Upgrade complete", kein Pod wurde neu gestartet (DaemonSets cilium/cilium-envoy und
+cilium-operator unverändert), `cilium status` OK. Cilium wird seitdem von Flux verwaltet.
 
 **Voraussetzungen, damit Flux überhaupt reconcilen kann** (Stand 2026-11-03 **beide erledigt**):
 
@@ -180,7 +180,15 @@ setzen, pushen, dann die beiden Befehle oben ausführen und beobachten.
 Ready), metrics-server und longhorn sind grün. traefik scheiterte zunächst an der Values-
 Schemaprüfung von Chart 41 (`logs` → `log`/`accessLog` umbenannt, siehe Fix in
 `infrastructure/base/apps/traefik/helm-release.yaml`). Derselbe Fehler blockierte auf captain-kube
-seit 2026-06-30 das Upgrade 40.3.0 → 41.0.2. cilium bleibt `suspend: true` (Schritt oben).
+seit 2026-06-30 das Upgrade 40.3.0 → 41.0.2. Nach dem Fix sind beide Cluster auf Chart 41.0.2.
+Cilium wurde anschließend adoptiert (4.5) – **Phase 0 ist damit abgeschlossen.**
+
+**Domain-Entscheidung:** karibik nutzt während der Migration die eigene Domain
+`karibik.hummler.com` (A-Records `karibik.hummler.com` und `*.karibik.hummler.com` → LB
+`2.31.111.21`, „port-royal"). Damit laufen Apps parallel auf beiden Clustern und sind testbar;
+der eigentliche Cutover pro App bleibt der DNS-Eintrag unter `kube.hummler.com` bzw. den
+App-Domains. Longhorn-UI und Traefik-Dashboard antworten bis Phase 2 mit HTTP 500, weil ihre
+Ingresses die oauth2-proxy-ForwardAuth-Middleware referenzieren, deren Service noch fehlt.
 
 ### 4.6 Ausrollen & prüfen
 
