@@ -52,7 +52,22 @@ Host barbossa barbossa-kube gibbs gibbs-kube
     IdentitiesOnly yes
     ServerAliveInterval 30
     ServerAliveCountMax 3
+
+# captain-kube (Alt-Cluster, wird migriert) – dort gibt es keinen hummli-User, Login nur als root
+Host captain captain-kube
+    HostName 46.4.68.185
+    User root
+    IdentityFile ~/.ssh/id_ed25519      # ⚠️ derselbe Key wie oben
+    IdentitiesOnly yes
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
 ```
+
+> **captain-kube** ist noch nicht gehärtet (kein Admin-User, Root-Login per Key). Das bleibt so,
+> bis das Cluster leergeräumt und neu aufgesetzt wird (siehe [gitops-karibik.md](gitops-karibik.md), Phase 4).
+> Die kubeconfig liegt dort unter `/etc/kubernetes/admin.conf`; die Zertifikate wurden am
+> 2026-10-30 per `kubeadm certs renew all` erneuert (gültig bis 2027-10-30) – danach muss die
+> lokale `~/.kube/config` neu vom Node kopiert werden.
 
 | Option                   | Zweck                                                                                     |
 | ------------------------ | ----------------------------------------------------------------------------------------- |
@@ -71,6 +86,7 @@ chmod 700 ~/.ssh && chmod 600 ~/.ssh/config
 ```bash
 ssh barbossa
 ssh gibbs
+ssh captain-kube   # root
 ```
 
 Die Aliase funktionieren überall, wo SSH im Spiel ist – z. B. beim Firewall-Rollout:
