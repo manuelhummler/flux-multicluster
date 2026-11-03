@@ -46,7 +46,7 @@ Cluster-Secrets.
 | Phase | Inhalt | Status |
 | ----- | ------ | ------ |
 | **0** | Fundament: Secrets/SOPS, cert-manager, cluster-issuer, metrics-server, longhorn, Cilium-Adoption | **erledigt 2026-11-03** |
-| 1 | Datenschicht: CloudNative-PG (statt Zalando), MariaDB Galera; **kein MinIO** (Backups → DigitalOcean) | **in Arbeit** |
+| 1 | Datenschicht: CloudNative-PG (statt Zalando), MariaDB Galera; **kein MinIO** (Backups → DigitalOcean) | **erledigt 2026-11-03** (Daten ziehen pro App in Phase 2/3 um) |
 | 2 | Plattform/Auth: keycloak, oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | offen |
 | 3 | Apps: vaultwarden, kimai, dtrack, apicurio, juno-care, fest-der-demokratie, minecraft, hopps-* | offen |
 | 4 | captain-kube leerräumen & neu aufsetzen / als 3. Node rejoinen | offen |
@@ -244,14 +244,52 @@ Deshalb startet karibik direkt mit **3 Galera-Pods auf 2 Nodes** (Overlay
 
 Keine Änderung an `replicas` oder an Daten nötig.
 
-### Noch offen in Phase 1
+### CloudNative-PG auf karibik (erledigt 2026-11-03)
 
-- cloudnative-pg-operator + CNPG-Cluster mit Rollen/Datenbanken für apicurio-registry, apicurio-studio,
-  keycloak, dtrack, vaultwarden; Barman-Backup nach DigitalOcean (eigener Prefix).
-- Für keycloak, dtrack, vaultwarden wechselt das Credential-Muster von Zalando (automatisches Secret
-  `<user>.<cluster>.credentials.postgresql.acid.zalan.do` im App-Namespace) zu CNPG
-  (`managed.roles[].passwordSecret` im cnpg-Namespace **und** dasselbe SOPS-Secret im App-Namespace,
-  wie heute bei apicurio).
+Overlays [infrastructure/karibik/cloudnative-pg/](../../infrastructure/karibik/cloudnative-pg/) (Operator,
+Chart 0.23.2 / CNPG 1.25.1) und
+[infrastructure/karibik/cloudnative-pg-cluster/](../../infrastructure/karibik/cloudnative-pg-cluster/):
+
+- **2 Instanzen** (Primary + Streaming-Replica, je eine pro Node, PG 17.4). Failover macht der Operator,
+  ein Quorum braucht CNPG nicht. Beim 3. Node optional `instances: 3`.
+- StorageClass `longhorn-postgres-replica-storage`: **ein** Longhorn-Replikat, `strict-local` – CNPG
+  repliziert selbst, doppelte Replikation wäre nur Latenz. Fällt ein Node aus, baut CNPG die Instanz
+  dort aus dem Primary neu auf.
+- Rollen + Datenbanken: `apicurio-studio`, `apicurio-registry`, `keycloak`, `dtrack`, `vaultwarden`
+  (`managed.roles` + `Database`-CRs). Passwörter liegen als `kubernetes.io/basic-auth`-Secrets
+  `<rolle>-secret` im Namespace `cnpg-cluster` (SOPS unter `cloudnative-pg-cluster/secrets/`).
+  **Dieselben Werte wie auf captain-kube**: apicurio aus den bestehenden SOPS-Dateien, keycloak/dtrack/
+  vaultwarden aus den Zalando-Credential-Secrets übernommen – die Apps behalten beim Umzug ihre
+  Zugangsdaten, nur der Host ändert sich auf `postgres-cluster-rw.cnpg-cluster`.
+- Backup: Barman in den DigitalOcean Space `hopps`, **Prefix `karibik-cnpg`**, alle 12 h, 30 Tage
+  Retention, WAL-Archiv kontinuierlich. Erstes Backup und `ContinuousArchiving=True` am 2026-11-03
+  verifiziert.
+- Cilium: Policies wie captain-kube, plus Replikation zwischen den Instanzen und Egress zu
+  `*.digitaloceanspaces.com:443` (toFQDNs; der DNS-Proxy kommt aus der default-deny-Regel der Base).
+
+**Stolperstein Webhook (karibik-spezifisch):** Die Cilium-Entity `kube-apiserver` enthält nur die IPs
+der `kubernetes`-Endpoints, auf karibik die **öffentlichen** Node-IPs. Der Webhook-Aufruf des apiservers
+vom jeweils anderen Node läuft über den VXLAN-Tunnel und trägt die Identität `remote-node` → Policy
+denied, Flux meldete `failed calling webhook ... context deadline exceeded`. Auf captain-kube (ein Node,
+Endpoint-IP = Node-IP) tritt das nicht auf. Fix: `patch-webhook-policy.yaml` lässt zusätzlich `host` und
+`remote-node` auf 9443 zu. Dasselbe Muster gilt für jeden Operator-Webhook hinter default-deny.
+Diagnose: `hubble observe --to-namespace <ns> --port <webhook-port>` auf dem Cilium-Pod des Ziel-Nodes.
+
+**Stolperstein kubectl:** `kubectl get database` / `get backup` trifft auf karibik die
+**mariadb-operator**-Typen (gleicher Kind-Name). Für CNPG immer voll qualifizieren:
+`kubectl get databases.postgresql.cnpg.io`, `kubectl get backups.postgresql.cnpg.io`.
+
+### Rezept: App von Zalando auf CNPG umziehen (Phase 2/3)
+
+1. App-Overlay auf karibik: DB-Secret aus `cloudnative-pg-cluster/secrets/<rolle>-encrypted.env` per
+   `secretGenerator` auch im App-Namespace erzeugen (Muster apicurio: `apicurio-registry-db`).
+2. HelmRelease-Patch: Host `postgres-cluster-rw.cnpg-cluster`, Port 5432, Secret-Name/Keys
+   (`username`/`password`) statt `*.credentials.postgresql.acid.zalan.do`. vaultwarden: `secret-uri`
+   im App-Secret neu bauen (`postgresql://vaultwarden:<pw>@postgres-cluster-rw.cnpg-cluster/vaultwarden`).
+3. Daten: auf captain-kube `pg_dump -Fc -U postgres <db>` im Zalando-Pod, nach karibik kopieren,
+   `pg_restore -U postgres -d <db> --no-owner --role=<rolle>` im CNPG-Primary. App auf captain-kube
+   vorher stoppen (Scale 0), damit kein Stand verloren geht.
+4. App auf karibik starten, prüfen, DNS umbiegen.
 
 ## 5. Rezept: weitere App nach karibik holen (Phase 1-3)
 
