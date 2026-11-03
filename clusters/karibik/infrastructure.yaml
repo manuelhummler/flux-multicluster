@@ -273,3 +273,55 @@ spec:
       kind: MaxScale
       name: maxscale-galera
       namespace: mariadb
+---
+# cloudnative-pg-operator (Phase 1)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cloudnative-pg-operator
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: prometheus-operator-crds
+    - name: longhorn
+  path: ./infrastructure/karibik/cloudnative-pg
+  prune: true
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: cloudnative-pg
+      namespace: cnpg-system
+---
+# cloudnative-pg-cluster (Phase 1) – 2 Instanzen, Rollen/DBs fuer apicurio, keycloak, dtrack,
+# vaultwarden; Barman-Backup nach DigitalOcean (Prefix karibik-cnpg)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cloudnative-pg-cluster
+  namespace: flux-system
+spec:
+  timeout: 10m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: prometheus-operator-crds
+    - name: longhorn
+    - name: cloudnative-pg-operator
+  path: ./infrastructure/karibik/cloudnative-pg-cluster
+  prune: true
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  healthChecks:
+    - apiVersion: postgresql.cnpg.io/v1
+      kind: Cluster
+      name: postgres-cluster
+      namespace: cnpg-cluster

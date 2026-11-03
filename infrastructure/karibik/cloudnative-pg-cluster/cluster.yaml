@@ -1,0 +1,80 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-cluster
+spec:
+  # 2 Instanzen = Primary + 1 Streaming-Replica, eine je Node (CNPG verteilt per Anti-Affinity).
+  # Failover uebernimmt der Operator in Sekunden, ein Quorum ist bei CNPG nicht noetig.
+  # Beim 3. Node optional auf 3 erhoehen.
+  instances: 2
+  primaryUpdateStrategy: unsupervised
+  storage:
+    size: 10Gi
+    storageClass: longhorn-postgres-replica-storage
+  walStorage:
+    size: 10Gi
+    storageClass: longhorn-postgres-replica-storage
+  monitoring:
+    enablePodMonitor: true
+  managed:
+    # Rolle + Passwort-Secret (kubernetes.io/basic-auth) hier im cnpg-Namespace. Die App bekommt
+    # dasselbe SOPS-Secret in ihrem eigenen Namespace (Muster wie apicurio auf captain-kube).
+    roles:
+      - name: apicurio-studio
+        login: true
+        comment: apicurio studio user
+        passwordSecret:
+          name: apicurio-studio-secret
+      - name: apicurio-registry
+        login: true
+        comment: apicurio registry user
+        passwordSecret:
+          name: apicurio-registry-secret
+      - name: keycloak
+        login: true
+        comment: keycloak user (vorher Zalando postgres-cluster)
+        passwordSecret:
+          name: keycloak-secret
+      - name: dtrack
+        login: true
+        comment: dependency-track user (vorher Zalando postgres-cluster)
+        passwordSecret:
+          name: dtrack-secret
+      - name: vaultwarden
+        login: true
+        comment: vaultwarden user (vorher Zalando postgres-cluster)
+        passwordSecret:
+          name: vaultwarden-secret
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      # DigitalOcean Space "hopps" (fra1), eigener Prefix pro Cluster. captain-kube nutzt
+      # hopps-cloud-postgres (Zalando) bzw. MinIO. Kein MinIO auf karibik.
+      destinationPath: s3://hopps/karibik-cnpg/
+      endpointURL: https://fra1.digitaloceanspaces.com
+      s3Credentials:
+        accessKeyId:
+          name: digitalocean-s3
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: digitalocean-s3
+          key: ACCESS_SECRET_KEY
+      wal:
+        compression: gzip
+      data:
+        compression: gzip
+        jobs: 2
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: db-scheduled-backup
+  labels:
+    app.kubernetes.io/component: database-backup
+spec:
+  cluster:
+    name: postgres-cluster
+  schedule: "0 0 23/12 * * *" # alle 12 Stunden ab 23:00 (wie captain-kube)
+  backupOwnerReference: none
+  # erstes Backup sofort nach dem Anlegen, damit die DigitalOcean-Anbindung direkt geprueft ist
+  immediate: true

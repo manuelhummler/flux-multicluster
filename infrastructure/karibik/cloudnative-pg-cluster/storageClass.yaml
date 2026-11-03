@@ -1,0 +1,18 @@
+# Ein Longhorn-Replikat, strikt lokal: CNPG repliziert selbst (Streaming Replication zwischen den
+# Instanzen). Eine zusaetzliche Longhorn-Replikation waere doppelt und kostet Schreib-Latenz.
+# Faellt ein Node aus, baut CNPG die Instanz dort aus dem Primary neu auf.
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: longhorn-postgres-replica-storage
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+parameters:
+  numberOfReplicas: "1"
+  staleReplicaTimeout: "1440"
+  fsType: "ext4"
+  dataLocality: "strict-local"

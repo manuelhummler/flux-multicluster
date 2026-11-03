@@ -1,0 +1,54 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: apicurio-studio
+spec:
+  name: apicurio-studio
+  owner: apicurio-studio
+  cluster:
+    name: postgres-cluster
+  encoding: UTF8
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: apicurio-registry
+spec:
+  name: apicurio-registry
+  owner: apicurio-registry
+  cluster:
+    name: postgres-cluster
+  encoding: UTF8
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: keycloak
+spec:
+  name: keycloak
+  owner: keycloak
+  cluster:
+    name: postgres-cluster
+  encoding: UTF8
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: dtrack
+spec:
+  name: dtrack
+  owner: dtrack
+  cluster:
+    name: postgres-cluster
+  encoding: UTF8
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: vaultwarden
+spec:
+  name: vaultwarden
+  owner: vaultwarden
+  cluster:
+    name: postgres-cluster
+  encoding: UTF8
