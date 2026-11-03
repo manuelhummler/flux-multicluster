@@ -466,4 +466,6 @@ und Verifizierung: siehe [firewall-hetzner.md](firewall-hetzner.md).
 
 ## Nächste Schritte
 
-_Wird ergänzt (FluxInstance / Repo-Anbindung, 3. Node …)._
+GitOps-Inbetriebnahme (FluxInstance / Repo-Anbindung) und das Ausrollen der Infrastruktur:
+siehe [gitops-karibik.md](gitops-karibik.md). Der 3. Control-Plane-Node (etcd-Quorum) wird
+analog zu §13 beigetreten.

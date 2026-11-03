@@ -1,0 +1,16 @@
+creation_rules:
+  # Für YAML-Secrets nur data/stringData verschlüsseln (Rest bleibt lesbar/diffbar)
+  - path_regex: .*.yaml
+    encrypted_regex: ^(data|stringData)$
+    age: age1ffsgx4kzutechq3p20sxxc8x4p2zg8xvwmzj6dhercecec543dtsdq27ka
+  # Catch-all (u.a. für *-encrypted.env): komplette Datei verschlüsseln
+  - age: >-
+      age1ffsgx4kzutechq3p20sxxc8x4p2zg8xvwmzj6dhercecec543dtsdq27ka
+#
+# Hinweis: Hier steht aktuell derselbe age-Recipient wie bei captain-kube
+# (einfachster Weg – derselbe private Key entschlüsselt beide Cluster).
+# Willst du karibik kryptografisch trennen, generiere einen eigenen Key
+#   age-keygen -o karibik.agekey
+# und ersetze die beiden age:-Zeilen durch den neuen Public-Key (age1...).
+# Der zugehörige private Key muss dann als Secret `sops-age` in den
+# flux-system-Namespace des karibik-Clusters (siehe configs/README.md).

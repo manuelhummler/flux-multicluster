@@ -1,3 +1,22 @@
+# configs (cluster-secrets via SOPS) – MUSS zuerst laufen, liefert ${...} für substituteFrom
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: configs
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/karibik/configs
+  prune: true
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+---
 # prometheus-operator-crds
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -17,6 +36,127 @@ spec:
       kind: HelmRelease
       name: prometheus-operator-crds
       namespace: flux-system
+---
+# cert-manager
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cert-manager
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: prometheus-operator-crds
+  path: ./infrastructure/karibik/cert-manager
+  prune: true
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: cert-manager
+      namespace: cert-manager
+---
+# cluster-issuer (letsencrypt-prod) – braucht ${EMAIL} aus cluster-secrets
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-issuer
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: cert-manager
+  path: ./infrastructure/karibik/cluster-issuer
+  prune: true
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+---
+# cilium – adoptiert das bestehende out-of-band Helm-Release (Namespace cilium, v1.19.5).
+# Keine dependsOn/substituteFrom: das CNI laeuft bereits, Values sind im Overlay
+# fest auf den Live-Stand gepinnt (No-Op-Uebernahme).
+#
+# suspend: true -> die CNI-Uebernahme feuert NICHT automatisch. Hintergrund: Flux haengt
+# derzeit mehrere Commits zurueck (GitRepository-SSH-Auth defekt); sobald die Auth gefixt
+# ist, wuerde sonst alles auf einmal reconcilen und Cilium unbeaufsichtigt adoptiert.
+# Zum bewussten, beobachteten Rollout: suspend auf false setzen und pushen, dann
+#   flux reconcile kustomization cilium --with-source
+#   kubectl -n cilium rollout status ds/cilium --timeout=2m
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cilium
+  namespace: flux-system
+spec:
+  suspend: true
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/karibik/cilium
+  prune: true
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: cilium
+      namespace: cilium
+---
+# metrics-server
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: metrics-server
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: prometheus-operator-crds
+  path: ./infrastructure/karibik/metrics-server
+  prune: true
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: metrics-server
+      namespace: metrics-server
+---
+# longhorn – braucht ${DOMAIN} aus cluster-secrets
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: longhorn
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: prometheus-operator-crds
+  path: ./infrastructure/karibik/longhorn
+  prune: true
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: longhorn
+      namespace: longhorn-system
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
 ---
 # traefik-crds-source (creates the GitRepository that pulls CRDs from the traefik-helm-chart)
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -63,7 +203,7 @@ spec:
     name: flux-system
   dependsOn:
     - name: prometheus-operator-crds
-    #- name: cert-manager
+    - name: cert-manager
     - name: traefik-crds
   path: ./infrastructure/karibik/traefik
   prune: true

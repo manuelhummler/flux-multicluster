@@ -54,5 +54,6 @@ Bewusst außerhalb des Hetzner-Netzes (`10.0.0.0/16`) gewählt, um Kollisionen z
 ## Weiterführende Dokumentation
 
 - [Node-Setup (Hetzner)](node-setup-hetzner.md) – Schritt-für-Schritt-Anleitung zum Aufsetzen eines Nodes.
+- [GitOps-Setup & App-Migration (Karibik)](gitops-karibik.md) – Repo-Anbindung (FluxInstance), Phasenmodell und Phase 0 (SOPS/cluster-secrets, cert-manager, longhorn …).
 - [Firewall-Konzept (Hetzner)](firewall-hetzner.md) – Host-Firewall (nftables) pro Node, Port-Referenz, Rollout mit Lockout-Schutz.
 - [SSH-Zugang](ssh-zugang.md) – lokale `~/.ssh/config` mit Aliasen (`ssh barbossa`, `ssh gibbs`), Key-Setup.
