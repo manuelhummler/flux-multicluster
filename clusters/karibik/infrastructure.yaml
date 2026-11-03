@@ -84,19 +84,16 @@ spec:
 # Keine dependsOn/substituteFrom: das CNI laeuft bereits, Values sind im Overlay
 # fest auf den Live-Stand gepinnt (No-Op-Uebernahme).
 #
-# suspend: true -> die CNI-Uebernahme feuert NICHT automatisch. Hintergrund: Flux haengt
-# derzeit mehrere Commits zurueck (GitRepository-SSH-Auth defekt); sobald die Auth gefixt
-# ist, wuerde sonst alles auf einmal reconcilen und Cilium unbeaufsichtigt adoptiert.
-# Zum bewussten, beobachteten Rollout: suspend auf false setzen und pushen, dann
-#   flux reconcile kustomization cilium --with-source
-#   kubectl -n cilium rollout status ds/cilium --timeout=2m
+# Adoption am 2026-11-03 aktiviert (suspend: false). Davor war die Kustomization suspended,
+# damit die CNI-Uebernahme nicht unbeaufsichtigt zusammen mit dem Auth-Fix feuert.
+# Bei Problemen: suspend wieder auf true setzen; das out-of-band-Release bleibt bestehen.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: cilium
   namespace: flux-system
 spec:
-  suspend: true
+  suspend: false
   timeout: 5m0s
   interval: 10m0s
   sourceRef:
