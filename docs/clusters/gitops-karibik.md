@@ -163,12 +163,24 @@ unbeaufsichtigt feuert. Rollout bewusst aktivieren: `suspend` in
 [clusters/karibik/infrastructure.yaml](../../clusters/karibik/infrastructure.yaml) auf `false`
 setzen, pushen, dann die beiden Befehle oben ausführen und beobachten.
 
-**Voraussetzungen, damit Flux überhaupt reconcilen kann** (Stand 2026-11-03 beide offen):
+**Voraussetzungen, damit Flux überhaupt reconcilen kann** (Stand 2026-11-03 **beide erledigt**):
 
 - GitRepository `flux-system` braucht einen gültigen SSH-Deploy-Key (Secret `flux-system` mit
   `identity`/`identity.pub`/`known_hosts`) – sonst zieht Flux keine neuen Commits.
+  Das Secret war vorhanden und korrekt (passt zum GitHub-Deploy-Key „karibik deploy key"), aber
+  die **FluxInstance im Cluster** hatte `sync.pullSecret` noch auskommentiert – die GitRepository
+  bekam daher keinen `secretRef` („invalid 'ssh' auth option: 'identity' is required").
+  Henne-Ei: Die Korrektur stand in Git, Flux konnte sie ohne Auth nicht ziehen. Einmalig gelöst mit
+  `kubectl apply -f clusters/karibik/flux.yaml` auf dem Node; seitdem folgt Flux wieder `main`.
 - `sops-age`-Secret muss im Cluster liegen (Schritt 4.1), sonst bleibt `configs`/`cluster-secrets`
-  leer und cert-manager/longhorn/traefik rot.
+  leer und cert-manager/longhorn/traefik rot. Erledigt: Key 1:1 aus captain-kube übernommen
+  (`kubectl -n flux-system get secret sops-age` dort → `create secret` hier, per SSH-Pipe).
+
+**Stand nach dem Rollout (2026-11-03):** configs, cert-manager, cluster-issuer (`letsencrypt-prod`
+Ready), metrics-server und longhorn sind grün. traefik scheiterte zunächst an der Values-
+Schemaprüfung von Chart 41 (`logs` → `log`/`accessLog` umbenannt, siehe Fix in
+`infrastructure/base/apps/traefik/helm-release.yaml`). Derselbe Fehler blockierte auf captain-kube
+seit 2026-06-30 das Upgrade 40.3.0 → 41.0.2. cilium bleibt `suspend: true` (Schritt oben).
 
 ### 4.6 Ausrollen & prüfen
 

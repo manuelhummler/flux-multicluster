@@ -121,6 +121,3 @@ spec:
     rbac:
       # Kubernetes Gateway provider requires ClusterRole. RBAC cannot be namespaced.
       namespaced: false
-    logs:
-      enabled: true
-      timezone: Europe/Berlin
