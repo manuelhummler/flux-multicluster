@@ -47,9 +47,9 @@ Cluster-Secrets.
 | ----- | ------ | ------ |
 | **0** | Fundament: Secrets/SOPS, cert-manager, cluster-issuer, metrics-server, longhorn, Cilium-Adoption | **erledigt 2026-11-03** |
 | 1 | Datenschicht: CloudNative-PG (statt Zalando), MariaDB Galera; **kein MinIO** (Backups → DigitalOcean) | **erledigt 2026-11-03** (Daten ziehen pro App in Phase 2/3 um) |
-| 2 | Plattform/Auth: keycloak, oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | offen |
+| 2 | Plattform/Auth: keycloak (**Operator statt Bitnami**, siehe 4c), oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | **in Arbeit** – keycloak-Manifeste eingecheckt, Kustomization bis zum DB-Restore suspended |
 | 3 | Apps: vaultwarden, kimai, dtrack, apicurio, juno-care, fest-der-demokratie, minecraft, hopps-* | offen |
-| 4 | captain-kube leerräumen & als 3. Node rejoinen; **danach** Control-Plane auf private IPs (siehe 4c) | offen |
+| 4 | captain-kube leerräumen & als 3. Node rejoinen; **danach** Control-Plane auf private IPs (siehe 4d) | offen |
 
 ---
 
@@ -291,7 +291,94 @@ Diagnose: `hubble observe --to-namespace <ns> --port <webhook-port>` auf dem Cil
    vorher stoppen (Scale 0), damit kein Stand verloren geht.
 4. App auf karibik starten, prüfen, DNS umbiegen.
 
-## 4c. Phase 4 – Control-Plane auf private IPs umstellen (erst nach dem 3. Node)
+## 4c. Phase 2 – Plattform/Auth
+
+### Keycloak: Operator statt Bitnami-Chart (Entscheidung 2026-11-06)
+
+captain-kube betreibt Keycloak 26.3.1 über das Bitnami-Chart (`base/apps/keycloak`). Das Image
+`docker.io/bitnami/keycloak:26.3.1-debian-12-r1` existiert dort **nicht mehr** – Bitnami hat 2025 den
+Katalog geleert, alte Tags liegen nur noch unter `bitnamilegacy/` (eingefroren, keine Updates). Auf
+captain-kube läuft der Pod nur noch aus dem Node-Image-Cache; ein frischer Rollout der Base auf karibik
+endet im `ImagePullBackOff`. Daher auf karibik der **offizielle Keycloak Operator** (Upstream-Image
+`quay.io/keycloak/keycloak`), die Bitnami-Base bleibt für captain-kube bis zur Abschaltung unverändert.
+
+Aufbau (drei Flux-Kustomizations in [clusters/karibik/infrastructure.yaml](../../clusters/karibik/infrastructure.yaml)):
+
+| Kustomization | Quelle | Inhalt |
+| --- | --- | --- |
+| `keycloak-operator-source` | [base/apps/keycloak-operator](../../infrastructure/base/apps/keycloak-operator/) | `GitRepository` auf `keycloak/keycloak-k8s-resources` (Tag = Keycloak-Version, Renovate bumpt) + Namespace `keycloak` (Pod-Security `restricted`) |
+| `keycloak-operator` | GitRepository `keycloak-operator`, Pfad `./kubernetes` | CRDs (`Keycloak`, `KeycloakRealmImport`, `KeycloakOIDCClient`, `KeycloakSAMLClient`) + Operator-Deployment; `patches` ergänzen den fehlenden `securityContext` |
+| `keycloak` | [karibik/keycloak](../../infrastructure/karibik/keycloak/) | `Keycloak`-CR, Traefik-Ingress, Cilium-Policies, Secret `keycloak-db` |
+
+Es gibt kein Upstream-Helm-Chart – das Muster entspricht `traefik-crds` (GitRepository + Kustomization
+auf ein Unterverzeichnis). Operator und Keycloak-CR liegen im **selben** Namespace, weil der Operator
+nur seinen eigenen Namespace beobachtet.
+
+Wesentliche Entscheidungen in [keycloak.yaml](../../infrastructure/karibik/keycloak/keycloak.yaml):
+
+- **DB**: `postgres-cluster-rw.cnpg-cluster`, Secret `keycloak-db` aus derselben SOPS-Datei wie die
+  CNPG-Rolle (`cloudnative-pg-cluster/secrets/keycloak-encrypted.env`) – kein Zalando-Umbau nötig.
+- **Hostname** `https://auth.${DOMAIN}` (= `auth.karibik.hummler.com`), `strict` (Default). Issuer für
+  oauth2-proxy/Grafana während der Migration: `https://auth.karibik.hummler.com/realms/hopps`.
+  Die extraHosts von captain-kube (`auth.hopps.cloud`, `auth.hopps.app`) kommen erst beim Cutover in
+  den Ingress – vorher kann cert-manager dafür kein Zertifikat ausstellen (DNS zeigt auf captain-kube).
+- **TLS bei Traefik**: `http.httpEnabled: true`, `proxy.headers: xforwarded`; Operator-Ingress aus,
+  eigener Ingress mit cert-manager; Operator-NetworkPolicy aus, stattdessen CiliumNetworkPolicies
+  (default-deny + explizite Freigaben: Traefik→8080, Prometheus→9000, Operator→8080/9000,
+  Keycloak→CNPG 5432). **Kein** Egress ins Internet – kein aktiver Identity-Provider, kein SMTP;
+  der alte `identity_provider`-Eintrag im Realm `hopps` wird nach dem Umzug in der Admin-Konsole gelöscht.
+- **Metriken**: `metrics-enabled`, der Operator legt den ServiceMonitor selbst an.
+- **Pod-Security**: Der Operator setzt keinen `securityContext` (geprüft im Operator-Code 26.8.2);
+  `unsupported.podTemplate` injiziert `runAsNonRoot`/`seccompProfile`/`drop ALL`. „unsupported" heißt:
+  bei Operator-Upgrades den Status der CR auf Warnungen prüfen.
+- **Update-Strategie** `RecreateOnImageChange` (1 Instanz, kein Rolling Update); `instances: 2` erst
+  beim 3. Node – der Cluster-Cache läuft per JDBC-Ping, Policy für JGroups (7800/57800) liegt schon bei.
+- Ressourcen: 768Mi/1Gi (captain-kube nutzt ~640Mi bei 768Mi Limit; Keycloak 26 nimmt 70 % des
+  Limits als Heap).
+- Kein `bootstrapAdmin`: Admin `hummli` kommt mit den Daten aus captain-kube.
+
+**Rollout in zwei Schritten.** Während der Parallelphase bleibt captain-kube das produktive Keycloak –
+im Realm `hopps` können weiter User dazukommen. Der erste Dump dient nur dem Test-Rollout auf karibik,
+beim Cutover wird der Stand **noch einmal** komplett übertragen. Keycloak 26.3.1 → 26.8.x: Die
+Schema-Migration macht Keycloak selbst beim ersten Start – und genau deshalb darf der zweite Restore
+nicht in die bereits migrierte DB laufen (neue Tabellen, `MIGRATION_MODEL` fortgeschrieben → Konflikte),
+sondern nur in eine geleerte.
+
+*Schritt A – Test-Rollout (jetzt, captain-kube läuft weiter):*
+
+1. Push → `keycloak-operator-source` und `keycloak-operator` werden grün (`kubectl -n keycloak get deploy`,
+   `kubectl get crd keycloaks.k8s.keycloak.org`). `keycloak` bleibt **suspended**.
+2. Dump auf captain-kube, **ohne** Keycloak dort zu stoppen (Konsistenz pro Dump reicht für den Test):
+   `kubectl -n postgres-cluster exec postgres-cluster-0 -c postgres -- pg_dump -Fc -U postgres keycloak > keycloak.dump`
+3. Restore in den CNPG-Primary auf karibik (DB `keycloak` existiert leer, Rolle `keycloak`; Primary per
+   `kubectl get cluster -n cnpg-cluster` ermitteln):
+   `kubectl -n cnpg-cluster exec -i postgres-cluster-1 -c postgres -- pg_restore -U postgres -d keycloak --no-owner --role=keycloak < keycloak.dump`
+4. `suspend: false` in `infrastructure.yaml`, push. Prüfen: `kubectl -n keycloak get keycloak keycloak -o yaml`
+   (Conditions `Ready=True`, keine `HasErrors`), Login unter `https://auth.karibik.hummler.com`,
+   Realm `hopps` samt Clients vorhanden, Metriken in Prometheus.
+5. Im Realm `hopps` auf **captain-kube** (produktiv!) die Redirect-URIs für die karibik-Hosts ergänzen
+   (oauth2-proxy, Grafana) – so kommen sie mit dem finalen Dump automatisch mit. Auf karibik nur testen,
+   nichts konfigurieren, was erhalten bleiben soll: der Stand dort wird beim Cutover überschrieben.
+
+*Schritt B – finaler Sync beim Cutover (Keycloak auf captain-kube wird abgeschaltet):*
+
+1. captain-kube: Keycloak auf 0 skalieren (`kubectl -n keycloak scale sts keycloak --replicas=0`; das
+   Bitnami-HelmRelease dort vorher suspenden, sonst skaliert Flux zurück). Ab jetzt keine Änderungen mehr.
+2. Dump wie in A.2 – das ist der endgültige Stand.
+3. karibik: Keycloak stoppen, ohne Commit: Flux-Kustomization `keycloak` suspenden
+   (`flux suspend kustomization keycloak`) und die CR auf 0 Instanzen patchen
+   (`kubectl -n keycloak patch keycloak keycloak --type merge -p '{"spec":{"instances":0}}'`).
+4. DB leeren und neu einspielen (als `postgres`, DB `keycloak` bleibt bestehen, nur das Schema wird ersetzt):
+   `psql -U postgres -d keycloak -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO keycloak;'`
+   dann `pg_restore` wie in A.3. Keycloak migriert beim nächsten Start erneut von 26.3.1 auf 26.8.x.
+5. `flux resume kustomization keycloak` – Flux setzt `instances: 1` aus Git zurück. Prüfen wie A.4.
+6. DNS `auth.kube.hummler.com` (und die extraHosts `auth.hopps.cloud`/`auth.hopps.app` im Ingress
+   ergänzen, jetzt kann cert-manager sie ausstellen) → karibik. Danach Keycloak auf captain-kube entfernen.
+
+Der jeweilige Dump ist zugleich das Rollback: captain-kube bleibt bis Schritt B unverändert, und auch
+in B kann der alte StatefulSet wieder auf 1 skaliert werden, solange dort nichts gelöscht wurde.
+
+## 4d. Phase 4 – Control-Plane auf private IPs umstellen (erst nach dem 3. Node)
 
 > **Voraussetzung:** Alle Apps sind von captain-kube migriert und captain-kube ist als 3. Node in
 > karibik gejoint. Vorher **nicht** anfassen: etcd hat mit 2 Membern keine Fehlertoleranz – jeder

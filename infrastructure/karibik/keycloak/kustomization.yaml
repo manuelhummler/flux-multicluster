@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Keycloak auf karibik ueber den offiziellen Operator (Phase 2), siehe docs/clusters/gitops-karibik.md.
+# Bewusst KEIN Bezug auf base/apps/keycloak: das ist das Bitnami-Chart von captain-kube, dessen
+# Image-Tags aus docker.io/bitnami verschwunden sind (nur noch bitnamilegacy, ohne Updates).
+namespace: keycloak
+resources:
+  - keycloak.yaml
+  - ingress.yaml
+  - networkPolicy.yaml
+  - ../../base/ciliumNetworkPolicy
+generatorOptions:
+  disableNameSuffixHash: true
+secretGenerator:
+  # DB-Zugang: dieselbe SOPS-Datei wie die CNPG-Rolle (username/password) – Rezept aus Phase 1
+  - name: keycloak-db
+    type: kubernetes.io/basic-auth
+    envs:
+      - ../cloudnative-pg-cluster/secrets/keycloak-encrypted.env

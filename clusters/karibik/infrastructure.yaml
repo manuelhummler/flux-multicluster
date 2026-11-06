@@ -325,3 +325,99 @@ spec:
       kind: Cluster
       name: postgres-cluster
       namespace: cnpg-cluster
+---
+# keycloak-operator-source (Phase 2) – GitRepository auf keycloak/keycloak-k8s-resources + Namespace keycloak
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: keycloak-operator-source
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/karibik/keycloak-operator
+  prune: true
+---
+# keycloak-operator (Phase 2) – CRDs + Operator-Deployment direkt aus dem Upstream-Repo
+# (kubernetes/kustomization.yml setzt Namespace keycloak). Kein Helm-Chart vorhanden.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: keycloak-operator
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: keycloak-operator
+  path: ./kubernetes
+  prune: true
+  dependsOn:
+    - name: keycloak-operator-source
+    - name: prometheus-operator-crds
+  # Upstream-Deployment hat keinen securityContext; Namespace erzwingt Pod-Security "restricted"
+  patches:
+    - target:
+        kind: Deployment
+        name: keycloak-operator
+      patch: |
+        - op: add
+          path: /spec/template/spec/securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+        - op: add
+          path: /spec/template/spec/containers/0/securityContext
+          value:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: keycloak-operator
+      namespace: keycloak
+---
+# keycloak (Phase 2) – Keycloak-CR, Ingress, Cilium-Policies, DB-Secret (CNPG-Rolle keycloak)
+#
+# SUSPENDED bis die Daten von captain-kube in CNPG liegen (pg_dump/pg_restore, siehe
+# docs/clusters/gitops-karibik.md Phase 2). Startet Keycloak vorher auf der leeren DB, legt es ein
+# frisches Schema an und der Restore kollidiert. Nach dem Restore: suspend: false.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: keycloak
+  namespace: flux-system
+spec:
+  suspend: true
+  timeout: 10m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: keycloak-operator
+    - name: cloudnative-pg-cluster
+    - name: cert-manager
+    - name: traefik
+  path: ./infrastructure/karibik/keycloak
+  prune: true
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: keycloak
+      namespace: keycloak

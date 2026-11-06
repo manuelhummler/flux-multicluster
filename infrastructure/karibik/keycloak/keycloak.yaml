@@ -1,0 +1,80 @@
+apiVersion: k8s.keycloak.org/v2beta1
+kind: Keycloak
+metadata:
+  name: keycloak
+spec:
+  # 1 Instanz auf 2 Nodes; beim 3. Node auf 2 erhoehen (Cluster-Cache laeuft per JDBC-Ping ueber
+  # die DB, keine weitere Konfiguration noetig – dann Ports 7800/57800 in networkPolicy.yaml beachten).
+  instances: 1
+
+  # CloudNative-PG aus Phase 1. Rolle/DB "keycloak" existieren dort bereits, Secret keycloak-db
+  # kommt aus derselben SOPS-Datei (siehe kustomization.yaml).
+  db:
+    vendor: postgres
+    host: postgres-cluster-rw.cnpg-cluster
+    port: 5432
+    database: keycloak
+    usernameSecret:
+      name: keycloak-db
+      key: username
+    passwordSecret:
+      name: keycloak-db
+      key: password
+
+  # TLS endet bei Traefik (Ingress + cert-manager), Keycloak spricht intern HTTP.
+  http:
+    httpEnabled: true
+  proxy:
+    headers: xforwarded
+  hostname:
+    hostname: https://auth.${DOMAIN}
+    # strict (Default true): Frontend-URLs/Issuer immer auf diesen Host, keine dynamische
+    # Aufloesung aus Request-Headern. Issuer fuer oauth2-proxy/Grafana: https://auth.${DOMAIN}/realms/hopps
+
+  # Eigener Traefik-Ingress (ingress.yaml) statt des Operator-Ingress (kein cert-manager, kein Klassenname)
+  ingress:
+    enabled: false
+  # Operator-eigene K8s-NetworkPolicy aus – wie ueberall im Repo CiliumNetworkPolicies (networkPolicy.yaml)
+  networkPolicy:
+    enabled: false
+
+  # Metriken auf dem Management-Port 9000; der Operator legt den ServiceMonitor selbst an
+  # (prometheus-operator-crds sind vorhanden).
+  additionalOptions:
+    - name: metrics-enabled
+      value: "true"
+  serviceMonitor:
+    enabled: true
+
+  # captain-kube (Bitnami): req 500m/512Mi, lim 750m/768Mi, Ist ~640Mi RSS. Keycloak 26 nimmt
+  # 70 % des Memory-Limits als Heap – 1Gi Limit entspricht ~716Mi Heap.
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  # Default (RecreateOnImageChange) – bei 1 Instanz kein Rolling Update moeglich; "Auto" braucht einen
+  # Check-Job und ist laut Doku mit unsupported.podTemplate unzuverlaessig.
+  update:
+    strategy: RecreateOnImageChange
+
+  # Der Operator setzt keinen securityContext (verifiziert in KeycloakDeploymentDependentResource,
+  # 26.8.2). Der Namespace erzwingt Pod-Security "restricted", daher hier per podTemplate injizieren;
+  # der Operator merged die Vorlage und behaelt vorhandene Felder des ersten Containers.
+  # "unsupported" = ohne Garantie durch Upstream, bei Operator-Upgrades auf Warnungen im Status achten.
+  unsupported:
+    podTemplate:
+      spec:
+        securityContext:
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        containers:
+          - securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                  - ALL

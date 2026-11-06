@@ -1,0 +1,139 @@
+# Cilium-Policies fuer den Namespace keycloak. Grundlage ist default-deny aus base/ciliumNetworkPolicy
+# (alles zu ausser DNS) fuer Operator- UND Keycloak-Pods.
+#
+# Keycloak-Pods haben keinen eigenen ServiceAccount (Operator nutzt "default"), daher Auswahl ueber die
+# Labels, die der Operator setzt: app=keycloak, app.kubernetes.io/component=server.
+# Operator-Pod: ServiceAccount keycloak-operator.
+
+# Traefik -> Keycloak (HTTP, TLS endet bei Traefik)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-ingress-from-traefik-to-keycloak
+spec:
+  endpointSelector:
+    matchLabels:
+      app: keycloak
+      app.kubernetes.io/component: server
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.cilium.k8s.policy.serviceaccount: traefik
+            io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports:
+            - port: "8080"
+---
+# Prometheus -> Management-Port (Metriken, ServiceMonitor vom Operator)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-ingress-from-prometheus-to-keycloak
+spec:
+  endpointSelector:
+    matchLabels:
+      app: keycloak
+      app.kubernetes.io/component: server
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.cilium.k8s.policy.serviceaccount: kube-prometheus-stack-prometheus
+            io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - port: "9000"
+---
+# Operator -> Keycloak (Admin-API fuer KeycloakRealmImport/KeycloakOIDCClient, Health auf 9000)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-ingress-from-operator-to-keycloak
+spec:
+  endpointSelector:
+    matchLabels:
+      app: keycloak
+      app.kubernetes.io/component: server
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.cilium.k8s.policy.serviceaccount: keycloak-operator
+      toPorts:
+        - ports:
+            - port: "8080"
+            - port: "9000"
+---
+# JGroups zwischen den Keycloak-Instanzen (Cluster-Cache, erst relevant ab instances: 2)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-keycloak-cluster-cache
+spec:
+  endpointSelector:
+    matchLabels:
+      app: keycloak
+      app.kubernetes.io/component: server
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: keycloak
+            app.kubernetes.io/component: server
+      toPorts:
+        - ports:
+            - port: "7800"
+            - port: "57800"
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app: keycloak
+            app.kubernetes.io/component: server
+      toPorts:
+        - ports:
+            - port: "7800"
+            - port: "57800"
+---
+# Keycloak -> CloudNative-PG (Gegenstueck: allow-ingress-from-cluster in cnpg-cluster)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-from-keycloak-to-postgres
+spec:
+  endpointSelector:
+    matchLabels:
+      app: keycloak
+      app.kubernetes.io/component: server
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.cilium.k8s.policy.serviceaccount: postgres-cluster
+            io.kubernetes.pod.namespace: cnpg-cluster
+      toPorts:
+        - ports:
+            - port: "5432"
+---
+# Kein Egress ins Internet: kein aktiver Identity-Provider, kein SMTP, kein LDAP.
+# (Der Realm "hopps" hat in der DB noch einen alten identity_provider-Eintrag – nach dem Umzug in der
+# Admin-Konsole entfernen. Wird wieder einer gebraucht: Egress per toFQDNs auf den Provider-Host, Port 443.)
+---
+# Operator -> kube-apiserver (Watches/Reconcile) und -> Keycloak-Pods
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-from-operator
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: keycloak-operator
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+    - toEndpoints:
+        - matchLabels:
+            app: keycloak
+            app.kubernetes.io/component: server
+      toPorts:
+        - ports:
+            - port: "8080"
+            - port: "9000"

@@ -1,0 +1,28 @@
+# Eigener Ingress statt des Operator-Ingress: cert-manager-Annotation, Traefik-Klasse, TLS-Secret.
+# Waehrend der Migration nur auth.${DOMAIN} (= auth.karibik.hummler.com). Die extraHosts von
+# captain-kube (auth.hopps.cloud, auth.hopps.app) zeigen per DNS noch auf captain-kube – ein
+# Zertifikat dafuer koennte hier nicht ausgestellt werden. Beim Cutover ergaenzen.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: auth.${DOMAIN}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                # vom Operator angelegt: <cr-name>-service, Port 8080 (httpEnabled)
+                name: keycloak-service
+                port:
+                  number: 8080
+  tls:
+    - hosts:
+        - auth.${DOMAIN}
+      secretName: keycloak-tls
