@@ -386,16 +386,16 @@ spec:
 ---
 # keycloak (Phase 2) – Keycloak-CR, Ingress, Cilium-Policies, DB-Secret (CNPG-Rolle keycloak)
 #
-# SUSPENDED bis die Daten von captain-kube in CNPG liegen (pg_dump/pg_restore, siehe
-# docs/clusters/gitops-karibik.md Phase 2). Startet Keycloak vorher auf der leeren DB, legt es ein
-# frisches Schema an und der Restore kollidiert. Nach dem Restore: suspend: false.
+# Test-Rollout 2026-11-08: Dump von captain-kube (Keycloak 26.3.1) in CNPG restored, danach aktiviert.
+# Beim Cutover folgt der finale Sync mit Schema-Reset (docs/clusters/gitops-karibik.md, Phase 2,
+# Schritt B) – dafuer wird hier NICHT wieder suspendiert, sondern per `flux suspend` + CR-Patch.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: keycloak
   namespace: flux-system
 spec:
-  suspend: true
+  suspend: false
   timeout: 10m0s
   interval: 10m0s
   sourceRef:
