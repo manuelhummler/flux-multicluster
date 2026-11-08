@@ -33,6 +33,11 @@
       "automergeType": "branch",
       "ignoreTests": true,
       "prPriority": 10
+    },
+    {
+      "description": "captain-kube minio: pinned to chart 15.0.7, newer Bitnami charts reference images moved to bitnamilegacy (not pullable); cluster is being decommissioned",
+      "matchFileNames": ["infrastructure/base/apps/minio/**"],
+      "enabled": false
     }
   ]
 }

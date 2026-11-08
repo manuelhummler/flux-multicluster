@@ -11,8 +11,11 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: minio
-        namespace: flux-system
-      version: 17.0.21
+      # Pinned to the installed release: newer Bitnami charts (>= 16) reference
+      # images that Bitnami moved to docker.io/bitnamilegacy and that can no
+      # longer be pulled from docker.io/bitnami. captain-kube is being migrated
+      # away, so no upgrade is intended here (see renovate.json).
+      version: 15.0.7
   interval: 1m0s
   values:
     global:
