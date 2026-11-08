@@ -9,6 +9,8 @@ resources:
   - ingress.yaml
   - networkPolicy.yaml
   - ../../base/ciliumNetworkPolicy
+  # HTTP-01-Solver von cert-manager muss hinter default-deny von Traefik erreichbar sein (8089)
+  - ../../base/ciliumNetworkPolicy/allow-acme.yaml
 generatorOptions:
   disableNameSuffixHash: true
 secretGenerator:
