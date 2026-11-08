@@ -573,7 +573,12 @@ an den Agenten weiter. Provider ist **`local`** (faster-whisper im Pod), konfigu
   Beides liegt auf der PVC, Download also einmalig (bis zum Volume-Verlust, siehe Backup-TODO).
 - `ffmpeg` ist im Image (Konvertierung der Telegram-OGG-Dateien), Audio-Cache unter `/opt/data/cache/audio/`.
 - **Nach einem Lazy-Install braucht der Gateway einen Neustart** (`pm.extras`: „restart needed“), erst dann läuft
-  er aus der neuen Umgebung unter `/opt/data/installs/<hash>/environments/<id>/venv`. Ein Pod-Neustart genügt.
+  er aus der neuen Umgebung unter `/opt/data/installs/<hash>/environments/<id>/venv` (in `facts.json` als
+  „committed“ eingetragen; `hermes doctor` zeigt „Runtime venv staged … active in this process“). Ein Pod-Neustart
+  genügt. Vorab-Installation und Modell-Download von Hand: `hermes pm install --extra stt-whisper` im Pod, dann
+  das Modell mit dem Python der neuen Umgebung laden (`tools.transcription_local._load_local_whisper_model`).
+- Boot-Warnung `[stage2] Warning: dependency refresh failed` ist rootless-bedingt (der Hook ruft `s6-setuidgid`
+  als Nicht-root) und harmlos: `pm.recovery.refresh_dependencies` liefert manuell „current“.
 - Sprache leer = Auto-Erkennung (deutsch/englisch gemischt). `base` wäre schneller, aber für Deutsch merklich
   schlechter; `medium`/`turbo` sprengen das 2-Gi-Limit des Pods.
 
