@@ -76,3 +76,4 @@ Key infrastructure components managed in this repo:
 - **Security**: cert-manager, Keycloak, Vaultwarden, oauth2-proxy
 - **Monitoring**: kube-prometheus-stack, loki-stack, metrics-server
 - **Other**: Kubernetes Dashboard, Dependency-Track, Kimai, Apicurio Studio/Registry
+- **AI**: Hermes Agent (karibik only, `hermes.hummler.com`; see `docs/clusters/gitops-karibik.md` section 4e)

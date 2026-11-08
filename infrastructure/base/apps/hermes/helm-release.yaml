@@ -1,0 +1,184 @@
+# Hermes Agent (KI-Harness von Nous Research) ueber das Community-Chart jyje/hermes-agent-helm.
+# Entscheidungen und Betrieb: docs/clusters/gitops-karibik.md, Abschnitt 4e.
+#
+# Single-Writer-Workload: ein Pod, eine RWO-PVC unter /opt/data (Memory, Skills, SQLite-Sessions).
+# Werte-Grundlage ist das values-hardened.yaml des Charts (Pod Security "restricted").
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: hermes
+spec:
+  interval: 1m0s
+  # Image ~2,2 GB; der erste Start synchronisiert die gebuendelten Skills auf das Volume (Minuten).
+  timeout: 15m0s
+  chart:
+    spec:
+      chart: hermes-agent
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: hermes-agent
+      version: 1.23.0
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    # Ressourcen heissen damit schlicht "hermes" (Deployment, Service, ServiceAccount, PVC);
+    # darauf verlassen sich die CiliumNetworkPolicies (io.cilium.k8s.policy.serviceaccount: hermes).
+    fullnameOverride: hermes
+
+    # image.tag leer = appVersion des Charts; Renovate bumpt Chart und damit das Image gemeinsam.
+    image:
+      repository: nousresearch/hermes-agent
+      pullPolicy: IfNotPresent
+
+    # Nicht-interaktiver Messaging-Gateway statt TUI; das Dashboard laeuft als eigener s6-Dienst im Pod.
+    args: ["gateway", "run"]
+    controller:
+      type: deployment
+    replicaCount: 1
+
+    config:
+      model:
+        # ChatGPT-Abo per Codex-OAuth (kein API-Key). Modelle aus dem Codex-Katalog des Accounts;
+        # gpt-6-luna ist laut Chart-Doku live verifiziert, Wechsel jederzeit per /model oder hier.
+        provider: openai-codex
+        default: gpt-6-luna
+      terminal:
+        # Shell-/Code-Ausfuehrung des Agenten laeuft IM Pod: der Pod ist die Sandbox
+        # (restricted PSS, read-only Rootfs, kein SA-Token, Cilium default-deny).
+        backend: local
+      agent:
+        gateway_timeout: 1800
+
+    # Chart-Platzhalter entfernen; alle Secrets kommen aus hermes-secrets (extraEnvFrom, SOPS im Overlay).
+    # Das Chart rendert selbst ein (dann leeres) Secret "hermes-env" – daher der andere Name.
+    env:
+      OPENAI_API_KEY: null
+    extraEnvFrom:
+      - secretRef:
+          name: hermes-secrets
+
+    # Codex-Device-Login beim Pod-Start (Init-Container auth-device-login, Hermes-Image):
+    # holt einen Device-Code bei auth.openai.com, schickt URL + Code per Telegram (TELEGRAM_BOT_TOKEN +
+    # TELEGRAM_HOME_CHANNEL aus hermes-secrets; steht zusaetzlich im Init-Container-Log) und wartet auf die
+    # Bestaetigung. Refresh-Token landet in /opt/data/auth.json; bei spaeteren Starts wird nur validiert/
+    # refresht, kein neuer Login. Siehe docs/clusters/gitops-karibik.md 4e.
+    auth:
+      deviceFlow:
+        enabled: true
+        provider: openai-codex
+        notify: telegram
+        # unter der ~15-Minuten-Gueltigkeit des Device-Codes; danach holt der Init-Container einen neuen
+        timeoutSeconds: 870
+        forceRelogin: false
+        tokenOwner:
+          uid: 10000
+          gid: 10000
+        # PSS restricted: gleiche UID wie der Agent (chown wird damit zum No-Op), keine Privilegien.
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10000
+          runAsGroup: 10000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+    # Einzeiler "Gateway laeuft" per Telegram nach jedem Start (Kanal folgt auth.deviceFlow.notify).
+    readyNotify:
+      enabled: true
+
+    dashboard:
+      enabled: true
+      # Externer Origin hinter Traefik (TLS endet dort). Wird beim ersten Seeden in config.yaml
+      # geschrieben; Host spaeter aendern braucht einmalig bootstrap.overwrite: true.
+      publicUrl: https://${HERMES_DOMAIN}
+      # Traefik-Pods duerfen X-Forwarded-* setzen (Pod-Netz; Traefik laeuft ohne hostNetwork).
+      trustedProxies:
+        - 172.22.0.0/16
+      auth:
+        # Basic-Auth-Credentials (HERMES_DASHBOARD_BASIC_AUTH_*) liegen im Secret hermes-secrets,
+        # das Chart kann sie nicht pruefen -> "external". Spaeter OIDC gegen Keycloak (Doku 4e).
+        provider: external
+
+    service:
+      enabled: true
+      type: ClusterIP
+      port: 9119
+
+    ingress:
+      enabled: true
+      className: traefik
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-prod
+      hosts:
+        - host: ${HERMES_DOMAIN}
+          paths:
+            - path: /
+              pathType: Prefix
+      tls:
+        - secretName: hermes-tls
+          hosts:
+            - ${HERMES_DOMAIN}
+
+    persistence:
+      enabled: true
+      storageClass: longhorn
+      accessModes:
+        - ReadWriteOnce
+      size: 5Gi
+      mountPath: /opt/data
+
+    # --- Pod Security "restricted" (aus values-hardened.yaml des Charts) ---
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 10000
+      runAsGroup: 10000
+      fsGroup: 10000
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+    # s6-overlay braucht /run beschreibbar und ausfuehrbar, die Tools /tmp. Bewusst begrenzt (RAM-backed).
+    extraVolumes:
+      - name: run-tmpfs
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Mi
+      - name: tmp-tmpfs
+        emptyDir:
+          medium: Memory
+          sizeLimit: 64Mi
+    extraVolumeMounts:
+      - name: run-tmpfs
+        mountPath: /run
+      - name: tmp-tmpfs
+        mountPath: /tmp
+    team:
+      sharedVolume:
+        permissions:
+          enabled: false
+
+    # Kubernetes-NetworkPolicy des Charts aus; wie ueberall im Repo CiliumNetworkPolicies (networkPolicy.yaml).
+    networkPolicy:
+      enabled: false
+    serviceAccount:
+      create: true
+      automountServiceAccountToken: false
+
+    # Chart-Test-Job (helm test) nicht rendern; Flux fuehrt keine Helm-Tests aus.
+    tests:
+      enabled: false
+
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi

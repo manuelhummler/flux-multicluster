@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Hermes Agent auf karibik (hermes.hummler.com), siehe docs/clusters/gitops-karibik.md, Abschnitt 4e.
+namespace: hermes
+resources:
+  - ../../base/apps/hermes
+generatorOptions:
+  disableNameSuffixHash: true
+secretGenerator:
+  # API-Key, Dashboard-Login, Telegram: alle Keys werden 1:1 Umgebungsvariablen im Pod (extraEnvFrom).
+  # Name bewusst NICHT "hermes-env": so heisst das (leere) Env-Secret, das das Chart selbst rendert.
+  - name: hermes-secrets
+    envs:
+      - hermes-env-encrypted.env

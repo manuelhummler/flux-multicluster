@@ -446,3 +446,37 @@ spec:
     provider: sops
     secretRef:
       name: sops-age
+---
+# hermes: Hermes Agent (KI-Harness, Nous Research) unter hermes.hummler.com, siehe docs/clusters/gitops-karibik.md 4e.
+# Neuinstallation (kein Umzug von captain-kube). Secrets in infrastructure/karibik/hermes/hermes-env-encrypted.env.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hermes
+  namespace: flux-system
+spec:
+  # Image ~2,2 GB plus Skills-Sync beim ersten Start
+  timeout: 15m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: longhorn
+    - name: traefik
+    - name: cluster-issuer
+  path: ./infrastructure/karibik/hermes
+  prune: true
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: hermes
+      namespace: hermes

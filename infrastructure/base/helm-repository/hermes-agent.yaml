@@ -1,0 +1,11 @@
+# Community-Chart fuer Hermes Agent (Nous Research) – es gibt kein offizielles Upstream-Chart.
+# OCI-Registry; Renovate bumpt die Chart-Version im HelmRelease (Flux-Manager).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: hermes-agent
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  type: oci
+  url: oci://ghcr.io/jyje/hermes-agent-helm

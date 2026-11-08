@@ -48,7 +48,8 @@ Cluster-Secrets.
 | **0** | Fundament: Secrets/SOPS, cert-manager, cluster-issuer, metrics-server, longhorn, Cilium-Adoption | **erledigt 2026-11-03** |
 | 1 | Datenschicht: CloudNative-PG (statt Zalando), MariaDB Galera; **kein MinIO** (Backups → DigitalOcean) | **erledigt 2026-11-03** (Daten ziehen pro App in Phase 2/3 um) |
 | 2 | Plattform/Auth: keycloak (**Operator statt Bitnami**, siehe 4c), oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | **in Arbeit** – keycloak Test-Rollout erledigt 2026-11-08 (läuft parallel auf `auth.karibik.hummler.com`), oauth2-proxy/Monitoring offen |
-| 3 | Apps: vaultwarden, kimai, dtrack, apicurio, juno-care, fest-der-demokratie, minecraft, hopps-* | offen |
+| 3 | Apps: vaultwarden, kimai, dtrack, apicurio, fest-der-demokratie, minecraft, hopps-* (juno-care am 2026-11-08 ersatzlos entfernt, kein Umzug) | offen |
+| neu | **Hermes Agent** (KI-Harness) unter `hermes.hummler.com`: keine Migration, Neuinstallation nur auf karibik (siehe 4e) | Manifeste 2026-11-08, Rollout offen; **TODO Backup der PVC** |
 | 4 | captain-kube leerräumen & als 3. Node rejoinen; **danach** Control-Plane auf private IPs (siehe 4d) | offen |
 
 ---
@@ -446,6 +447,211 @@ Entity `kube-apiserver` wieder und der karibik-Patch wird überflüssig.
 
 **Lernpfad:** passt zu den offenen etcd-Themen (advertise vs. listen, Peer-URL/SAN-Zusammenhang,
 `member update`) in [docs/learning/README.md](../learning/README.md).
+
+## 4e. Hermes Agent (KI-Harness) – Neuinstallation auf karibik
+
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) (Nous Research) ist ein self-hosted
+KI-Agent mit persistentem Memory, Skills, Messaging-Gateways (Telegram, Discord, …) und Web-Dashboard.
+Er läuft **nur auf karibik** unter `https://hermes.hummler.com` – es gibt nichts von captain-kube zu
+migrieren. DNS: `*.hummler.com` zeigt seit 2026-11-08 auf den karibik-LB (`2.31.111.21`); captain-kube
+behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt unter `hummler.com`).
+
+### Entscheidungen (2026-11-08)
+
+| Thema | Entscheidung | Begründung |
+| ----- | ------------ | ---------- |
+| Chart | Community-Chart [jyje/hermes-agent-helm](https://github.com/jyje/hermes-agent-helm) `1.23.0` als OCI (`oci://ghcr.io/jyje/hermes-agent-helm`) | Kein offizielles Upstream-Chart. Dieses ist das aktivste (Upstream-Tracking, `values-hardened.yaml` für PSS `restricted`, Device-Login-Init-Container). Image `nousresearch/hermes-agent`, Tag = `appVersion` des Charts (1.23.0 → `v0.22.5`; Upstream-Latest ist `v0.23.0`), Renovate bumpt Chart und Image gemeinsam. |
+| Workload | 1 Pod (Deployment, `Recreate`), PVC 5Gi Longhorn (2 Replikate) unter `/opt/data` | Single-Writer: Memory, Skills und SQLite-Sessions liegen auf dem Volume. `replicaCount > 1` wird vom Chart abgelehnt. |
+| Pod Security | Namespace `hermes` mit PSS `restricted`; Werte aus `values-hardened.yaml` (UID 10000, read-only Rootfs, tmpfs für `/run` und `/tmp`) | Das Image startet normalerweise als root (s6-overlay chown). Non-root ist laut Chart-CI gegen das Image verifiziert; `fsGroup: 10000` ersetzt das chown. |
+| LLM-Provider | `openai-codex`: das ChatGPT-Plus-Abo per **Codex-OAuth** (Device-Code-Login beim Pod-Start, Init-Container `auth-device-login`), Modell `gpt-6-luna` | Entscheidung 2026-11-08 trotz Vorbehalten (siehe „Vorbehalte Codex-OAuth“ unten): kein zusätzlicher API-Key, Kosten im Abo. Das Plus-Abo enthält **keinen** API-Zugang, die Alternative `openai-api` mit Platform-Key steht unten. |
+| Dashboard-Login | Hermes-eigene **Basic-Auth** (`HERMES_DASHBOARD_BASIC_AUTH_*`), später **OIDC gegen Keycloak** | Hermes erzwingt bei Bind auf 0.0.0.0 eine eigene Auth („fails closed“); kein oauth2-proxy nötig (den gibt es auf karibik noch nicht). OIDC erst nach dem Keycloak-Cutover, sonst ändert sich die Issuer-URL. |
+| Terminal-Backend | `local` – der Agent führt Shell-Befehle **im eigenen Pod** aus | `docker` braucht einen Daemon/Socket (im Cluster nicht unterstützt). Der Pod ist die Sandbox: `restricted`, read-only Rootfs, kein ServiceAccount-Token, Cilium default-deny. |
+| Egress | **minimal**: nur `auth.openai.com:443`, `chatgpt.com:443` (Codex-Login/-Refresh und Inference) und `api.telegram.org:443` (toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
+| Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
+
+### Aufbau
+
+| Datei | Inhalt |
+| --- | --- |
+| [base/helm-repository/hermes-agent.yaml](../../infrastructure/base/helm-repository/hermes-agent.yaml) | OCI-HelmRepository (landet per Kustomize-`namespace` im Namespace `hermes`, Muster minio) |
+| [base/apps/hermes/](../../infrastructure/base/apps/hermes/) | Namespace (PSS restricted), HelmRelease (`fullnameOverride: hermes`), CiliumNetworkPolicies, default-deny + allow-acme |
+| [karibik/hermes/](../../infrastructure/karibik/hermes/) | Overlay + Secret `hermes-secrets` aus `hermes-env-encrypted.env` (SOPS); Vorlage `hermes-env.env.example` |
+| `configs/secret-encrypted.env` | neuer Key `HERMES_DOMAIN=hermes.hummler.com` (der Host liegt nicht unter `${DOMAIN}`) |
+| [clusters/karibik/infrastructure.yaml](../../clusters/karibik/infrastructure.yaml) | Kustomization `hermes` (dependsOn longhorn, traefik, cluster-issuer; Timeout 15m wegen 2,2-GB-Image) |
+
+Alle Keys aus `hermes-secrets` werden 1:1 Umgebungsvariablen im Pod (`extraEnvFrom`), auch im Init-Container.
+Das Chart kann sie deshalb nicht prüfen → `dashboard.auth.provider: external`. Der Chart-Platzhalter
+`env.OPENAI_API_KEY` wird per `null` entfernt; das vom Chart gerenderte Secret `hermes-env` bleibt leer
+(deshalb der abweichende Name `hermes-secrets`).
+
+Der Init-Container `auth-device-login` (gleiches Hermes-Image) läuft unter PSS `restricted` als UID 10000
+(`auth.deviceFlow.securityContext`), dieselbe UID wie der Agent, damit das chown der Token-Datei ein No-Op ist.
+`readyNotify.enabled: true` schickt nach jedem Gateway-Start eine Einzeiler-Meldung per Telegram.
+
+### Schritt 1 – Secrets befüllen (vor dem ersten Push)
+
+```bash
+sops infrastructure/karibik/hermes/hermes-env-encrypted.env   # öffnet entschlüsselt im Editor
+```
+
+| Key | Wert |
+| --- | --- |
+| `HERMES_DASHBOARD_BASIC_AUTH_USERNAME` / `_PASSWORD` / `_SECRET` | bereits gesetzt (`hummli`, Zufallswerte) – Passwort per `sops -d … \| grep PASSWORD` nachsehen |
+| `TELEGRAM_BOT_TOKEN` | siehe Schritt 2 |
+| `TELEGRAM_ALLOWED_USERS` | deine numerische Telegram-User-ID (kommagetrennt für mehrere). Leer/Platzhalter = Bot antwortet niemandem. |
+| `TELEGRAM_HOME_CHANNEL` | Chat-ID für Zustellungen (Device-Code beim Codex-Login, „Gateway läuft“, Cron). Für 1:1 = deine User-ID. **Vorher dem Bot `/start` schicken**, sonst darf er dir nicht schreiben. |
+
+Kein `OPENAI_API_KEY` nötig: der Codex-Login läuft beim ersten Start (Schritt 3). Ohne gültigen
+`TELEGRAM_BOT_TOKEN` würde der Init-Container den Device-Code nur ins Log schreiben und der Gateway ohne
+Plattform starten; die Platzhalter `REPLACE_ME` deshalb vor dem Push ersetzen.
+
+### Schritt 2 – Telegram-Bot einrichten
+
+1. In Telegram **@BotFather** öffnen → `/newbot` → Name (z. B. „Hermes karibik“) und Username
+   (muss auf `bot` enden, z. B. `hummler_hermes_bot`). BotFather antwortet mit dem Token
+   (`123456789:AA…`) → `TELEGRAM_BOT_TOKEN`.
+2. Eigene User-ID ermitteln: **@userinfobot** anschreiben (antwortet mit `Id: 123456789`) →
+   `TELEGRAM_ALLOWED_USERS`. Optional dieselbe ID als `TELEGRAM_HOME_CHANNEL` eintragen, dann
+   landen Cron-/Benachrichtigungen des Agenten in deinem Chat.
+3. Optional in BotFather `/setprivacy` → Disable, falls der Bot später in Gruppen alle Nachrichten
+   lesen soll (für 1:1-Chats nicht nötig).
+4. Hermes nutzt **Long Polling** (nur ausgehend, `api.telegram.org:443`) – kein Webhook, kein Ingress,
+   keine weitere Firewall-Regel.
+5. **Vor dem Rollout** dem Bot einmal `/start` schicken: Telegram-Bots dürfen nur Nutzern schreiben, die den
+   Chat eröffnet haben, und der Device-Code aus Schritt 3 kommt genau über diesen Weg. Antwortet der Bot
+   später nicht, zuerst `TELEGRAM_ALLOWED_USERS`, dann die Egress-Policy prüfen
+   (`hubble observe --from-pod hermes/ --verdict DROPPED`).
+
+### Schritt 3 – Rollout, Codex-Login und Prüfung
+
+```bash
+git push
+flux --context karibik reconcile kustomization flux-system --with-source
+flux --context karibik get kustomization hermes
+kubectl --context karibik -n hermes get helmrelease,pods,pvc,certificate,ingress
+kubectl --context karibik -n hermes logs deploy/hermes -c auth-device-login -f
+```
+
+**Codex-Login (einmalig, interaktiv):** Der Pod bleibt in `Init:1/2`, bis der Login bestätigt ist. Der
+Init-Container holt bei `auth.openai.com` einen Device-Code und schickt dir URL + Code per Telegram (steht
+auch im Log oben). Im Browser, in dem du bei ChatGPT angemeldet bist, `https://auth.openai.com/codex/device`
+öffnen, Code eingeben, bestätigen. Ein Code gilt ~15 Minuten, danach holt der Init-Container von selbst
+einen neuen (Timeout 870 s, dann Neustart des Init-Containers). Das Refresh-Token liegt danach in
+`/opt/data/auth.json`; bei späteren Pod-Starts wird nur validiert bzw. refresht, kein neuer Login.
+
+Danach wie gewohnt: `kubectl … logs deploy/hermes -c hermes-agent -f`. Erwartung: HelmRelease `Ready`,
+Pod `1/1` (Readiness erst, wenn das Dashboard auf 9119 lauscht – der erste Start kopiert Skills aufs Volume
+und dauert Minuten), Telegram-Meldung „Gateway läuft“ (readyNotify), Zertifikat `hermes-tls` Ready, Login
+unter `https://hermes.hummler.com` mit Basic-Auth, Testnachricht im Dashboard, dann eine Nachricht an den Bot.
+
+### Egress erweitern (Rezept)
+
+Alle Policies liegen in [base/apps/hermes/networkPolicy.yaml](../../infrastructure/base/apps/hermes/networkPolicy.yaml),
+Selektor `io.cilium.k8s.policy.serviceaccount: hermes`. Pro Freigabe eine eigene Policy, z. B.:
+
+```yaml
+# Skills-Hub / git clone von GitHub
+- toFQDNs:
+    - matchName: github.com
+    - matchName: raw.githubusercontent.com
+    - matchName: api.github.com
+  toPorts:
+    - ports:
+        - port: "443"
+```
+
+„Internet prinzipiell ja“ (Web-Tools des Agenten), aber ohne Cluster-, VLAN- und Hetzner-Metadaten-Netze:
+
+```yaml
+- toCIDRSet:
+    - cidr: 0.0.0.0/0
+      except:
+        - 10.0.0.0/8          # Hetzner-VLAN tortuga + Pod-/Service-Netze
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+        - 169.254.0.0/16      # Metadaten-Endpoint
+  toPorts:
+    - ports:
+        - port: "443"
+        - port: "80"
+```
+
+Diagnose bei Hängern immer zuerst: `hubble observe --from-pod hermes/ --verdict DROPPED` auf dem
+Cilium-Pod des Nodes, auf dem Hermes läuft.
+
+### Login später auf Keycloak-OIDC umstellen (nach dem Keycloak-Cutover)
+
+Hermes unterstützt nur **public clients mit PKCE** (kein Client-Secret) und hat **keine User-Allowlist**:
+jeder, dem Keycloak für den Client ein Token ausstellt, darf ins Dashboard → Zugriff in Keycloak
+einschränken (eigener Realm oder Client-Rolle/Authorization).
+
+1. Keycloak: Client `hermes-dashboard` (public, Standard Flow, PKCE S256), Redirect-URI
+   `https://hermes.hummler.com/auth/callback`, Web Origin `https://hermes.hummler.com`.
+2. HelmRelease: `dashboard.auth.provider: oidc` und
+   `config.dashboard.oauth.self_hosted: { issuer: https://auth.<domain>/realms/hopps, client_id: hermes-dashboard }`;
+   die drei `HERMES_DASHBOARD_BASIC_AUTH_*`-Keys aus `hermes-secrets` entfernen.
+3. Einmalig `bootstrap.overwrite: true` mitgeben (config.yaml auf dem Volume wird sonst nicht
+   überschrieben), nach dem Rollout wieder entfernen.
+4. Egress-Policy für den Issuer ergänzen (`toFQDNs` auf den Keycloak-Host, Port 443 – geht über den LB
+   zurück in den Cluster; alternativ `toEndpoints` auf die Keycloak-Pods, Port 8080, wenn der Issuer
+   intern erreichbar sein soll).
+5. Fehlerbild „`/auth/login` antwortet 503“ = Issuer-URL falsch (Discovery-Fehler steht im Body).
+
+### Vorbehalte Codex-OAuth und Alternative `openai-api`
+
+Die Codex-Variante wurde am 2026-11-08 bewusst gewählt, mit diesen bekannten Punkten:
+
+- **Plan-Limits und Zulässigkeit**: Hermes dokumentiert nicht, wie die Nutzung auf die Codex-Limits des
+  Plus-Abos angerechnet wird; ob OpenAI die Nutzung außerhalb der offiziellen Codex-Clients duldet, ist
+  nicht belegt. Ein Sperr-Risiko für den ChatGPT-Account ist nicht auszuschließen.
+- **Token-Familie**: Codex-Refresh-Tokens sind Einweg-Tokens mit Rotation. Zwei Programme mit *derselben*
+  `auth.json` machen sich gegenseitig kaputt; laut Chart-Doku soll OpenAI bei einem zweiten Login desselben
+  Accounts den älteren widerrufen (im Live-Test der Chart-Autoren trat das nicht auf). Fehlerbild: Hermes
+  meldet „refresh token dead“ oder der Codex-CLI/Desktop verliert den Login. Abhilfe: einmalig
+  `auth.deviceFlow.forceRelogin: true` setzen (oder `/opt/data/auth.json` löschen) und den Device-Login
+  wiederholen.
+- **Modelle**: nur Codex-Katalog des Accounts (z. B. `gpt-6-luna`, `-900k`-Alias für größeres Kontextfenster
+  auf Kosten der Quota). Direkte API-Modelle sind nicht verfügbar.
+- **Interaktiver Schritt**: jeder frische Login braucht einen Menschen (Device-Code). Nach einem
+  Volume-Verlust (siehe Backup-TODO) also wieder Schritt 3.
+
+**Zurück zu `openai-api` (Platform-Key, Pay-per-Token):** im HelmRelease `config.model.provider: openai-api`,
+`default` z. B. `gpt-4o-mini`, `auth.deviceFlow.enabled: false`, `readyNotify.enabled: false`; in
+`hermes-secrets` `OPENAI_API_KEY=sk-…` eintragen; in `networkPolicy.yaml` `api.openai.com` statt
+`auth.openai.com`/`chatgpt.com` freigeben. Auf einem bestehenden Volume zusätzlich einmalig
+`bootstrap.overwrite: true`, damit `config.yaml` neu geschrieben wird.
+
+### ⚠️ TODO: Backup der Hermes-PVC
+
+Die PVC `hermes` (Longhorn, 5Gi) ist die **einzige Kopie** von Memory, Skills, Sessions und `config.yaml`.
+Zwei Longhorn-Replikate schützen vor Node-Ausfall, nicht vor Löschen oder kaputtem Volume. Noch offen:
+
+1. Longhorn-Backup-Target auf karibik einrichten (S3 → DigitalOcean Space `hopps`, eigener Prefix
+   `karibik-longhorn`; Credentials als Secret im Namespace `longhorn-system`, Werte in
+   `defaultSettings.backupTarget`/`backupTargetCredentialSecret` des Longhorn-Overlays).
+2. `RecurringJob` (z. B. täglich, Retention 14) mit Gruppe `default` oder Label-Selektor; PVC `hermes`
+   per `recurring-job-group.longhorn.io/default: enabled` annotieren.
+3. Restore-Test dokumentieren (Volume aus Backup → PVC → Pod neu starten).
+
+Bis dahin gilt: Änderungen an `SOUL.md`/Skills sind nur auf dem Volume. Behelf:
+`kubectl -n hermes exec deploy/hermes -c hermes-agent -- tar czf - /opt/data > hermes-data.tgz`.
+
+### Stolpersteine
+
+- **Image 2,2 GB**: erster Pull dauert, dazu der Skills-Sync beim ersten Start. HelmRelease- und
+  Kustomization-Timeout stehen deshalb auf 15 Minuten.
+- **Dashboard „fails closed“**: fehlen die `HERMES_DASHBOARD_BASIC_AUTH_*`-Variablen, startet der
+  Dashboard-Dienst nicht und der Ingress antwortet 502/503. Die Readiness-Probe (TCP 9119) bleibt rot.
+- **config.yaml wird nur einmal geseedet** (`bootstrap.overwrite: false`): Änderungen an
+  `dashboard.publicUrl`, `trustedProxies` oder dem Modell im HelmRelease greifen auf einem bestehenden
+  Volume erst mit einmaligem `bootstrap.overwrite: true` (oder per Dashboard/`/model` zur Laufzeit).
+- **Chart-Version ≠ Upstream-Version**: Chart 1.23.0 pinnt `v0.22.5`; Renovate liefert die Bumps.
+- **Pod hängt in `Init:1/2`**: der Codex-Login wartet auf deine Bestätigung (Schritt 3). Kommt kein Telegram,
+  Code aus `kubectl -n hermes logs deploy/hermes -c auth-device-login` nehmen; Ursache meist fehlendes `/start`
+  an den Bot oder falsche `TELEGRAM_HOME_CHANNEL`. Egress-Drops gegen `auth.openai.com` per Hubble prüfen.
+- **Namen**: Deployment, Service, ServiceAccount und PVC heißen alle `hermes` (`fullnameOverride`),
+  die Container heißen `seed-config`, `auth-device-login` (Init) und `hermes-agent`, das SOPS-Secret
+  `hermes-secrets`, das Chart-Secret `hermes-env`.
 
 ## 5. Rezept: weitere App nach karibik holen (Phase 1-3)
 
