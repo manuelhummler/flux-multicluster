@@ -1,0 +1,83 @@
+# Pro Makler – externe App aus dem GitLab-Repo hummler-gbr/pro-makler (Muster wie hopps-* auf captain-kube).
+# Die Manifeste liegen dort unter deployment/ (plain Kustomize, kein Helm):
+#   deployment/keycloak  -> eigene Keycloak-Instanz "pro-makler" + Realm-Import (Namespace keycloak, Operator-Grenze)
+#   deployment/app       -> Backend, Frontend, Ingress, Cilium-Policies (Namespace pro-makler)
+# Plattformseite (Namespace, DB-Secrets, Deploy-Key): Kustomization pro-makler-platform in infrastructure.yaml.
+# Secrets im App-Repo sind mit demselben age-Recipient wie karibik verschluesselt (sops-age).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: pro-makler
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  url: ssh://git@gitlab.com/hummler-gbr/pro-makler.git
+  ref:
+    branch: main
+  secretRef:
+    name: pro-makler-deploy-key
+  # nur der Deployment-Ordner, nicht Quellcode/Design/Exporte
+  ignore: |
+    # exclude
+    /*
+    # include
+    !/deployment
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: pro-makler-keycloak
+  namespace: flux-system
+spec:
+  # Keycloak-Start + Realm-Import dauern ein paar Minuten
+  timeout: 10m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: pro-makler
+  path: ./deployment/keycloak
+  prune: true
+  dependsOn:
+    - name: pro-makler-platform
+    - name: keycloak-operator
+    - name: cert-manager
+    - name: traefik
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: pro-makler
+      namespace: keycloak
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: pro-makler
+  namespace: flux-system
+spec:
+  timeout: 10m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: pro-makler
+  path: ./deployment/app
+  prune: true
+  dependsOn:
+    # Backend prueft beim Start die OIDC-Discovery des Realms
+    - name: pro-makler-keycloak
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: pro-makler-backend
+      namespace: pro-makler
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: pro-makler-frontend
+      namespace: pro-makler

@@ -52,3 +52,27 @@ spec:
   cluster:
     name: postgres-cluster
   encoding: UTF8
+---
+# Pro Makler: App-Datenbank (Flyway legt Schema + Rolle promakler_app an) ...
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: promakler
+spec:
+  name: promakler
+  owner: promakler
+  cluster:
+    name: postgres-cluster
+  encoding: UTF8
+---
+# ... und eigene Keycloak-Instanz fuer Pro Makler (Keycloak-CR pro-makler im Namespace keycloak)
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: promakler-keycloak
+spec:
+  name: promakler-keycloak
+  owner: promakler-keycloak
+  cluster:
+    name: postgres-cluster
+  encoding: UTF8

@@ -45,6 +45,17 @@ spec:
         comment: vaultwarden user (vorher Zalando postgres-cluster)
         passwordSecret:
           name: vaultwarden-secret
+      # Pro Makler (GitLab-Repo hummler-gbr/pro-makler): App-DB und eigene Keycloak-Instanz
+      - name: promakler
+        login: true
+        comment: pro-makler backend user (Flyway + SET ROLE promakler_app)
+        passwordSecret:
+          name: promakler-secret
+      - name: promakler-keycloak
+        login: true
+        comment: pro-makler keycloak instance user
+        passwordSecret:
+          name: promakler-keycloak-secret
   backup:
     retentionPolicy: "30d"
     barmanObjectStore:

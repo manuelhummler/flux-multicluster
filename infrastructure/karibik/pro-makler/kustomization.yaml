@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Plattformseite fuer Pro Makler (App-Manifeste liegen im GitLab-Repo hummler-gbr/pro-makler, Ordner deployment/).
+# Hier: Namespace, DB-Zugaenge (dieselben SOPS-Dateien wie die CNPG-Rollen) und der Deploy-Key fuer Flux.
+# Kein namespace: auf Kustomization-Ebene – die Secrets gehen bewusst in drei verschiedene Namespaces.
+resources:
+  - namespace.yaml
+  - deploy-key-encrypted.yaml
+generatorOptions:
+  disableNameSuffixHash: true
+secretGenerator:
+  # Backend -> CNPG (DB_USERNAME/DB_PASSWORD per secretKeyRef username/password)
+  - name: pro-makler-db
+    namespace: pro-makler
+    type: kubernetes.io/basic-auth
+    envs:
+      - ../cloudnative-pg-cluster/secrets/promakler-encrypted.env
+  # Keycloak-CR pro-makler (Namespace keycloak, Operator sieht nur seinen Namespace) -> CNPG
+  - name: pro-makler-keycloak-db
+    namespace: keycloak
+    type: kubernetes.io/basic-auth
+    envs:
+      - ../cloudnative-pg-cluster/secrets/promakler-keycloak-encrypted.env

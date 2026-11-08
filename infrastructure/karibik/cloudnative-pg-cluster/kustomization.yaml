@@ -38,3 +38,12 @@ secretGenerator:
     type: kubernetes.io/basic-auth
     envs:
       - secrets/vaultwarden-encrypted.env
+  # Pro Makler (Overlay infrastructure/karibik/pro-makler reicht dieselben Dateien in die App-Namespaces)
+  - name: promakler-secret
+    type: kubernetes.io/basic-auth
+    envs:
+      - secrets/promakler-encrypted.env
+  - name: promakler-keycloak-secret
+    type: kubernetes.io/basic-auth
+    envs:
+      - secrets/promakler-keycloak-encrypted.env

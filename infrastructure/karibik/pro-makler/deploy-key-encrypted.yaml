@@ -1,0 +1,27 @@
+# Read-Only-Deploy-Key des GitLab-Projekts hummler-gbr/pro-makler (Titel "flux karibik (read-only)").
+# Wird von der GitRepository pro-makler in clusters/karibik/pro-makler.yaml referenziert.
+apiVersion: v1
+kind: Secret
+metadata:
+    name: pro-makler-deploy-key
+    namespace: flux-system
+type: Opaque
+stringData:
+    identity: ENC[AES256_GCM,data:bvdE8uGyj50X0q8eILC9cCw4JTclQferQqaqFKyYYhfBT7Qxk1YwR57sKcfjrbpPvgKR4HLIrJOCG47YEH9lIqDcdfzIeAk/JDmmjD6TFszjTm7u2rEcd8eZPUu+Oj4+b0tfmj6plNPn8kZ63Vr/InLyGAM6qbqTmVJwMcgDPpb58AcvO88njY3tKfGA1MdmODijmapkiOEpd0gnsKELwrDnzARoDe9851kQ3ZOIB30CCblbLCcJl9HBnnITVtoc9H09HBPEJPXSO4MLtCB7NrAowNmMdesJUvqRt9r6vHhfMAY9h4yT0qTPFzm2oYkEXi5atDengVaU92xhweMr4ST6Nz5/bJr6oXvwliBQy/ZWezNEzD7NYcqAD3Gt8RkFVDzWU1qnKfeQNKfvYIEyPuj9SNnYPSbDQUdGvD52sqmXlIcp7PTzf7tgbxa66IEnb1OLxqe7EjnmKkhxlAqL4yRSnGayv+h5PZPP5DA2oirf/76CHJGPnnBHPlmnUElCrrCA2Bz7LhzkOx+CibsECPbYvy9Wpf8+tNxZA7URKFbwask=,iv:B/T78vWAMxTI8P9W1TlPC2zl+AQzHn+saE/oAFVS9Pg=,tag:A3TO3oyaHG5X6yMzW7q5Qw==,type:str]
+    identity.pub: ENC[AES256_GCM,data:e6NuMy8jz6z2W3l0eiqkuqrCrA21iJuUequW1KjS8NxO7NUPnoKN+vE3dfNLyunGYF2EPSD6rbg/mX6rr9PVsZ/MSaEhnohdgjtmaczJ9S6gaLuMOUzjA8bOqCEM8tkqJlFe+iM77fKO,iv:70EF0rpqqTc0nDrVyYG7GEyddJPA3ntnQVm4HvXEWbY=,tag:L2o+mvG2IBpqeJJPFF2gVw==,type:str]
+    known_hosts: ENC[AES256_GCM,data:uuiPfck60NF3c2yrpWeEdkyvk691PM8eBcvrDW4XDueC/z5RCJw4V67o9KVgbXGjAbHt9BplD8pch0UMlGD46oZG/eKfXwQkPnlpV1F0Gi9RSCuXzsup1gvB6sF4YwSsxy25nDIU96/2iU/tr9oy0YHP8tglwu8n4kJul13CR4h8tJSXhObdGin3nZObBoyZ3ygnNGW1ZNRQIJQs6xpZpZRBp9bHg74zw08FUMdLIcq0Kg+0DVS895hECPnCOmFkZL+3iJUZrM8fDV26Eyt40iCoo+nah6RMCBRf7CcvSbkOUAHgksgfpHjP4yRJuQOcPY7p5gvvQ0HPShw6U9t6o/ERS4GT9tKbikrzPYnX1FQob0ALXl7TVlS8ZBMTvfpb2bKHdH7iaF5VeyYelV6E3Zqsadns9AqbY5X1nUtPWnlmxRWkQiPuX4zHqTW7PRd1jn240AkeY37RQewLvZMHqh+2JmVxq4A9OLI6SJy4djbHRTMTVYwPC70yHhxbJIaWGzMADY754D7grsfPen1zvksmS6jR7kea5FUcYCad25hh1QqUOtPPDHnEPH4K+B5UvlIzDm2V5lJ08eRn/+BRGM/nc4SCdv6WAfx7tXgbVj/hG6UuRPrMdCJJSrSzJqGM2kUm8iMSEKdSm38HIy24eHs8OOHSyHPc5IEVxR/QNTXMwF9yTEyx89/J+sDaI7UZ0hvSJLFjOAxK5goBqKRcw3X/mu6dF35QJh70tfTtGPk8J9oHersi7tQ4ja+UEEiVOPaPsO17tg1EZbCdqp7xeoLxoRpOAtTw9qOFlwF09/3RRKgfqnzcdIr8m71xj1v5esBlFflvIgQcxiU5NiOGVcf0F/vf3lslBFaoPqnnu+sE4gXCMQ+MVBEqIwAM3+kGjFqpU2PquBCJqrSSYSPdikN65xZ1XQL3MssJ7N7nsYr+g8ed9fqGIzJK5Icy8Ib+X0NFnbKOQ05hyHxloa/VBv4p2ukOe8nKsbTxGKz8Gi1bf/u6u6PSBMVBNQY=,iv:8MX/M+whZObsTc5n7fymcdyTIrXwIDJlyGk7syltbuQ=,tag:wx/HoBpfQXJPFxALMBubIg==,type:str]
+sops:
+    age:
+        - recipient: age1ffsgx4kzutechq3p20sxxc8x4p2zg8xvwmzj6dhercecec543dtsdq27ka
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA5ckJqcE50elJUdWc4OHJk
+            Sy9JRTZ0RVlJSlBST3orUzAzZ2ZnUGVYWDEwCjFmS3F2dTA0WlEwSVlrZVZUd2Mw
+            YXNYZ0lVK3dzVGFkekZROEtvWG95UEUKLS0tIHVzeTJ4a2pWWVI4M0UyRHNSQTIw
+            NUJweGtENkxTOTltQUV6ZkY2bzhPT3MKZ/gTVS7EsWV/HK+cvzXVys8Nv/59bSrU
+            BlleKVjobbnM3VQ94Ug22PTk0A7rlGLQlrASA1TOJuSg4UHKtfafvw==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2026-11-08T19:59:40Z"
+    mac: ENC[AES256_GCM,data:OU2i9Tf/uGJWIsSLOvKEz56Z7cLCipQ/3TBLJf02nfCk8OeHAVtwKpu2A02AxKiS0TjP/dsUPBn9m6JdXfdoTi4ttcq5M3VD9iGgOSsQHARBGiZjdStMggW8+4Bx/HEuU2KttqKY+kyvLfoZQjOusootdtqTnmetUqUW3rSdpf4=,iv:IRU5mcm8QQLuBCHtvoI0UBziVwj5SFIZBJQWBAGB/rQ=,tag:YTQFQCIk41LsGHMva8ZXZA==,type:str]
+    encrypted_regex: ^(data|stringData)$
+    version: 3.10.2
