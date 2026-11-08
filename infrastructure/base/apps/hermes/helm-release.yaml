@@ -223,7 +223,9 @@ spec:
       storageClass: longhorn
       accessModes:
         - ReadWriteOnce
-      size: 5Gi
+      # 5Gi waren nach Lazy-Install (2,3 GB venv unter installs/) + Whisper-Modell zu 65 % voll.
+      # Longhorn erweitert online (allowVolumeExpansion), Verkleinern geht nicht.
+      size: 10Gi
       mountPath: /opt/data
       # Volume (Memory, Skills, auth.json) ueberlebt helm uninstall / Install-Remediation; Helm adoptiert
       # die PVC beim naechsten Install wieder.

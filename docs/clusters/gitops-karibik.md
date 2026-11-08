@@ -461,7 +461,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | Thema | Entscheidung | Begründung |
 | ----- | ------------ | ---------- |
 | Chart | Community-Chart [jyje/hermes-agent-helm](https://github.com/jyje/hermes-agent-helm) `1.23.0` als OCI (`oci://ghcr.io/jyje/hermes-agent-helm`) | Kein offizielles Upstream-Chart. Dieses ist das aktivste (Upstream-Tracking, `values-hardened.yaml` für PSS `restricted`, Device-Login-Init-Container). Image `nousresearch/hermes-agent`, Tag = `appVersion` des Charts (1.23.0 → `v0.22.5`; Upstream-Latest ist `v0.23.0`), Renovate bumpt Chart und Image gemeinsam. |
-| Workload | 1 Pod (Deployment, `Recreate`), PVC 5Gi Longhorn (2 Replikate) unter `/opt/data` | Single-Writer: Memory, Skills und SQLite-Sessions liegen auf dem Volume. `replicaCount > 1` wird vom Chart abgelehnt. |
+| Workload | 1 Pod (Deployment, `Recreate`), PVC 10Gi Longhorn (2 Replikate) unter `/opt/data` (anfangs 5Gi; der Lazy-Install legt eine 2,3-GB-Python-Umgebung unter `installs/` an) | Single-Writer: Memory, Skills und SQLite-Sessions liegen auf dem Volume. `replicaCount > 1` wird vom Chart abgelehnt. |
 | Pod Security | Namespace `hermes` mit PSS `restricted`; Werte aus `values-hardened.yaml` (UID 10000, read-only Rootfs, tmpfs für `/run` und `/tmp`) | Das Image startet normalerweise als root (s6-overlay chown). Non-root ist laut Chart-CI gegen das Image verifiziert; `fsGroup: 10000` ersetzt das chown. |
 | LLM-Provider | `openai-codex`: das ChatGPT-Plus-Abo per **Codex-OAuth** (Device-Code-Login beim Pod-Start, Init-Container `auth-device-login`), Modell `gpt-6-luna` | Entscheidung 2026-11-08 trotz Vorbehalten (siehe „Vorbehalte Codex-OAuth“ unten): kein zusätzlicher API-Key, Kosten im Abo. Das Plus-Abo enthält **keinen** API-Zugang, die Alternative `openai-api` mit Platform-Key steht unten. |
 | Dashboard-Login | Hermes-eigene **Basic-Auth** (`HERMES_DASHBOARD_BASIC_AUTH_*`), später **OIDC gegen Keycloak** | Hermes erzwingt bei Bind auf 0.0.0.0 eine eigene Auth („fails closed“); kein oauth2-proxy nötig (den gibt es auf karibik noch nicht). OIDC erst nach dem Keycloak-Cutover, sonst ändert sich die Issuer-URL. |
@@ -572,6 +572,8 @@ an den Agenten weiter. Provider ist **`local`** (faster-whisper im Pod), konfigu
   `*.*.*.hf.co`. Fehlerbild ohne diese Freigabe: `httpx.ConnectTimeout`, Hubble zeigt Drops zu einer AWS-IP.
   Beides liegt auf der PVC, Download also einmalig (bis zum Volume-Verlust, siehe Backup-TODO).
 - `ffmpeg` ist im Image (Konvertierung der Telegram-OGG-Dateien), Audio-Cache unter `/opt/data/cache/audio/`.
+- **Nach einem Lazy-Install braucht der Gateway einen Neustart** (`pm.extras`: „restart needed“), erst dann läuft
+  er aus der neuen Umgebung unter `/opt/data/installs/<hash>/environments/<id>/venv`. Ein Pod-Neustart genügt.
 - Sprache leer = Auto-Erkennung (deutsch/englisch gemischt). `base` wäre schneller, aber für Deutsch merklich
   schlechter; `medium`/`turbo` sprengen das 2-Gi-Limit des Pods.
 
