@@ -466,7 +466,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | LLM-Provider | `openai-codex`: das ChatGPT-Plus-Abo per **Codex-OAuth** (Device-Code-Login beim Pod-Start, Init-Container `auth-device-login`), Modell `gpt-6-luna` | Entscheidung 2026-11-08 trotz Vorbehalten (siehe „Vorbehalte Codex-OAuth“ unten): kein zusätzlicher API-Key, Kosten im Abo. Das Plus-Abo enthält **keinen** API-Zugang, die Alternative `openai-api` mit Platform-Key steht unten. |
 | Dashboard-Login | Hermes-eigene **Basic-Auth** (`HERMES_DASHBOARD_BASIC_AUTH_*`), später **OIDC gegen Keycloak** | Hermes erzwingt bei Bind auf 0.0.0.0 eine eigene Auth („fails closed“); kein oauth2-proxy nötig (den gibt es auf karibik noch nicht). OIDC erst nach dem Keycloak-Cutover, sonst ändert sich die Issuer-URL. |
 | Terminal-Backend | `local` – der Agent führt Shell-Befehle **im eigenen Pod** aus | `docker` braucht einen Daemon/Socket (im Cluster nicht unterstützt). Der Pod ist die Sandbox: `restricted`, read-only Rootfs, kein ServiceAccount-Token, Cilium default-deny. |
-| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co` (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
+| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
 | Sprachnachrichten | `stt.provider: local` (faster-whisper, Modell `small`, Sprache automatisch) | Self-hosted statt Cloud-STT (Groq/OpenAI bräuchten eigenen Key, OpenAI-STT läuft nicht über den Codex-Login). Node hat 16 Kerne/64 GB, Pod-Limit 2 Gi reicht für `small` (int8). |
 | config.yaml | `bootstrap.overwrite: true` – das Chart schreibt `config.yaml` bei jedem Start aus dem HelmRelease neu | Git ist die Wahrheit; Laufzeit-Änderungen (z. B. `/model` im Chat) überleben keinen Pod-Neustart. Dauerhafte Änderungen gehören ins HelmRelease. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
@@ -566,8 +566,10 @@ an den Agenten weiter. Provider ist **`local`** (faster-whisper im Pod), konfigu
 - **faster-whisper ist nicht im Image.** Hermes installiert es beim ersten Bedarf per gebündeltem `uv` nach
   `/opt/data/installs` (Lazy-Install, `security.allow_lazy_installs` Default an). Dafür Egress zu `pypi.org`
   und `files.pythonhosted.org`.
-- **Whisper-Modell** `small` (~500 MB) kommt von `huggingface.co` nach `/opt/data/.cache/huggingface`;
-  `HF_HUB_DISABLE_XET=1` erzwingt den klassischen LFS-CDN (`*.huggingface.co`) statt `*.xethub.hf.co`.
+- **Whisper-Modell** `small` (~500 MB) kommt von `huggingface.co` nach `/opt/data/.cache/huggingface`. Die
+  Dateien selbst liefert das CDN unter `hf.co` (Redirect auf z. B. `us.aws.cdn.hf.co`, auch mit
+  `HF_HUB_DISABLE_XET=1`); Ciliums `*` in `matchPattern` matcht nur ein Label, daher `*.hf.co`, `*.*.hf.co`,
+  `*.*.*.hf.co`. Fehlerbild ohne diese Freigabe: `httpx.ConnectTimeout`, Hubble zeigt Drops zu einer AWS-IP.
   Beides liegt auf der PVC, Download also einmalig (bis zum Volume-Verlust, siehe Backup-TODO).
 - `ffmpeg` ist im Image (Konvertierung der Telegram-OGG-Dateien), Audio-Cache unter `/opt/data/cache/audio/`.
 - Sprache leer = Auto-Erkennung (deutsch/englisch gemischt). `base` wäre schneller, aber für Deutsch merklich

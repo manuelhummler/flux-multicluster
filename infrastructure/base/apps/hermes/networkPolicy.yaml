@@ -58,8 +58,9 @@ spec:
             - port: "443"
 ---
 # Lokale Sprach-Transkription (config.stt.provider: local): faster-whisper wird beim ersten Bedarf per uv
-# von PyPI nachinstalliert, das Whisper-Modell von Hugging Face geladen (HF_HUB_DISABLE_XET=1, daher nur
-# *.huggingface.co). Beides einmalig, landet auf der PVC.
+# von PyPI nachinstalliert, das Whisper-Modell von Hugging Face geladen. huggingface.co leitet die Dateien
+# auf das CDN unter hf.co um (z. B. us.aws.cdn.hf.co, cdn-lfs-eu-1.hf.co); Ciliums "*" matcht nur ein
+# Label, daher mehrere Pattern. Beides einmalig, landet auf der PVC.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -74,6 +75,10 @@ spec:
         - matchName: files.pythonhosted.org
         - matchName: huggingface.co
         - matchPattern: "*.huggingface.co"
+        - matchName: hf.co
+        - matchPattern: "*.hf.co"
+        - matchPattern: "*.*.hf.co"
+        - matchPattern: "*.*.*.hf.co"
       toPorts:
         - ports:
             - port: "443"
