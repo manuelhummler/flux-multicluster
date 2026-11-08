@@ -539,7 +539,8 @@ auch im Log oben). Im Browser, in dem du bei ChatGPT angemeldet bist, `https://a
 einen neuen (Timeout 870 s, dann Neustart des Init-Containers). Das Refresh-Token liegt danach in
 `/opt/data/auth.json`; bei späteren Pod-Starts wird nur validiert bzw. refresht, kein neuer Login.
 
-Danach wie gewohnt: `kubectl … logs deploy/hermes -c hermes-agent -f`. Erwartung: HelmRelease `Ready`,
+Danach wie gewohnt: `kubectl … logs deploy/hermes -c hermes-agent -f`. Erwartung: HelmRelease `Ready` (ist es
+wegen `install.disableWait` schon vor dem Login, sagt also nichts über den Pod),
 Pod `1/1` (Readiness erst, wenn das Dashboard auf 9119 lauscht – der erste Start kopiert Skills aufs Volume
 und dauert Minuten), Telegram-Meldung „Gateway läuft“ (readyNotify), Zertifikat `hermes-tls` Ready, Login
 unter `https://hermes.hummler.com` mit Basic-Auth, Testnachricht im Dashboard, dann eine Nachricht an den Bot.
@@ -638,6 +639,12 @@ Bis dahin gilt: Änderungen an `SOUL.md`/Skills sind nur auf dem Volume. Behelf:
 
 ### Stolpersteine
 
+- **Helm wartet nicht auf den Menschen** (`install.disableWait: true`): Beim ersten Rollout am 2026-11-08 hat
+  helm-controller nach 10 Minuten `ProgressDeadlineExceeded` des Deployments als „stalled“ gewertet, den Install
+  abgebrochen und deinstalliert – der laufende Device-Login war damit weg. Deshalb wartet der Install nicht mehr
+  (das HelmRelease ist `Ready`, bevor der Pod läuft; Pod-Status per `kubectl` prüfen), ein `postRenderers`-Patch
+  setzt `progressDeadlineSeconds: 3600`, und die PVC trägt `helm.sh/resource-policy: keep`, damit kein
+  Uninstall das Volume mitnimmt. Upgrades warten weiterhin, der Token liegt dann schon auf dem Volume.
 - **Image 2,2 GB**: erster Pull dauert, dazu der Skills-Sync beim ersten Start. HelmRelease- und
   Kustomization-Timeout stehen deshalb auf 15 Minuten.
 - **Dashboard „fails closed“**: fehlen die `HERMES_DASHBOARD_BASIC_AUTH_*`-Variablen, startet der

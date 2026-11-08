@@ -20,11 +20,28 @@ spec:
         name: hermes-agent
       version: 1.23.0
   install:
+    # Beim Erst-Install wartet ein Mensch (Codex-Device-Login im Init-Container). helm-controller darf
+    # darauf nicht warten: Nach 10 Minuten meldet das Deployment ProgressDeadlineExceeded, Helm bricht
+    # mit "stalled resources" ab, deinstalliert und killt damit den laufenden Login (passiert 2026-11-08).
+    # Upgrades warten weiterhin (Token liegt dann schon auf dem Volume).
+    disableWait: true
     remediation:
       retries: 3
   upgrade:
     remediation:
       retries: 3
+  # Das Chart kennt kein progressDeadlineSeconds; Default 600 s reicht weder fuer den Login noch fuer den
+  # Skills-Sync beim ersten Start. Kustomize-Patch nach dem Rendern.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: hermes
+            patch: |
+              - op: add
+                path: /spec/progressDeadlineSeconds
+                value: 3600
   values:
     # Ressourcen heissen damit schlicht "hermes" (Deployment, Service, ServiceAccount, PVC);
     # darauf verlassen sich die CiliumNetworkPolicies (io.cilium.k8s.policy.serviceaccount: hermes).
@@ -130,6 +147,10 @@ spec:
         - ReadWriteOnce
       size: 5Gi
       mountPath: /opt/data
+      # Volume (Memory, Skills, auth.json) ueberlebt helm uninstall / Install-Remediation; Helm adoptiert
+      # die PVC beim naechsten Install wieder.
+      annotations:
+        helm.sh/resource-policy: keep
 
     # --- Pod Security "restricted" (aus values-hardened.yaml des Charts) ---
     podSecurityContext:
