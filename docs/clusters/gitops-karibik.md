@@ -374,6 +374,11 @@ zusätzlich einbinden (Konvention wie traefik, oauth2-proxy, kube-prometheus-sta
 die Base aufzunehmen bricht deren Builds („already registered id") – auf **beiden** Clustern, da sie
 dieselbe Base lesen.
 
+**Stolperstein Realm-Import hinter default-deny (2026-11-08, Pro Makler):** Die Import-Jobs des Operators
+(`KeycloakRealmImport`) laufen als eigene Pods mit `app=keycloak-realm-import` und brauchen eine eigene
+Egress-Freigabe zu CNPG (`allow-egress-from-realm-import-to-postgres` in `karibik/keycloak/networkPolicy.yaml`),
+sonst scheitert der Job mit „Connect timed out“.
+
 *Schritt B – finaler Sync beim Cutover (Keycloak auf captain-kube wird abgeschaltet):*
 
 1. captain-kube: Keycloak auf 0 skalieren (`kubectl -n keycloak scale sts keycloak --replicas=0`; das

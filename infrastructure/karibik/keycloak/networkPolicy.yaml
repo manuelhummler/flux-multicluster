@@ -110,6 +110,26 @@ spec:
         - ports:
             - port: "5432"
 ---
+# Realm-Import-Jobs des Operators (KeycloakRealmImport, `kc.sh import`) -> CloudNative-PG. Die Job-Pods tragen
+# app=keycloak-realm-import statt app=keycloak und fallen sonst durch default-deny (Stolperstein 2026-11-08,
+# erste Nutzung mit der Pro-Makler-Instanz).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-from-realm-import-to-postgres
+spec:
+  endpointSelector:
+    matchLabels:
+      app: keycloak-realm-import
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.cilium.k8s.policy.serviceaccount: postgres-cluster
+            io.kubernetes.pod.namespace: cnpg-cluster
+      toPorts:
+        - ports:
+            - port: "5432"
+---
 # Kein Egress ins Internet: kein aktiver Identity-Provider, kein SMTP, kein LDAP.
 # (Der Realm "hopps" hat in der DB noch einen alten identity_provider-Eintrag – nach dem Umzug in der
 # Admin-Konsole entfernen. Wird wieder einer gebraucht: Egress per toFQDNs auf den Provider-Host, Port 443.)

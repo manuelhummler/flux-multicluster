@@ -48,6 +48,9 @@ spec:
       # Pro Makler (GitLab-Repo hummler-gbr/pro-makler): App-DB und eigene Keycloak-Instanz
       - name: promakler
         login: true
+        # Flyway (V001) legt die NOLOGIN-Rolle promakler_app an und vergibt sie an sich selbst – dafuer
+        # braucht die Rolle CREATEROLE (ab PG16 ohne Superuser-Eskalation, Creator bekommt ADMIN OPTION).
+        createrole: true
         comment: pro-makler backend user (Flyway + SET ROLE promakler_app)
         passwordSecret:
           name: promakler-secret
