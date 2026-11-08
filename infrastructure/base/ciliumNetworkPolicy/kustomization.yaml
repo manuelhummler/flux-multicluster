@@ -2,3 +2,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - default-deny.yaml
+  # Ohne diese Freigabe blockiert default-deny den HTTP-01-Solver von cert-manager
+  # (Traefik -> Solver-Pod:8089) in jedem Namespace mit Ingress – Zertifikate bleiben "pending".
+  - allow-acme.yaml
