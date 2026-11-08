@@ -49,7 +49,7 @@ Cluster-Secrets.
 | 1 | Datenschicht: CloudNative-PG (statt Zalando), MariaDB Galera; **kein MinIO** (Backups → DigitalOcean) | **erledigt 2026-11-03** (Daten ziehen pro App in Phase 2/3 um) |
 | 2 | Plattform/Auth: keycloak (**Operator statt Bitnami**, siehe 4c), oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | **in Arbeit** – keycloak Test-Rollout erledigt 2026-11-08 (läuft parallel auf `auth.karibik.hummler.com`), oauth2-proxy/Monitoring offen |
 | 3 | Apps: vaultwarden, kimai, dtrack, apicurio, fest-der-demokratie, minecraft, hopps-* (juno-care am 2026-11-08 ersatzlos entfernt, kein Umzug) | offen |
-| neu | **Hermes Agent** (KI-Harness) unter `hermes.hummler.com`: keine Migration, Neuinstallation nur auf karibik (siehe 4e) | Manifeste 2026-11-08, Rollout offen; **TODO Backup der PVC** |
+| neu | **Hermes Agent** (KI-Harness) unter `hermes.hummler.com`: keine Migration, Neuinstallation nur auf karibik (siehe 4e) | **läuft seit 2026-11-08**; offen: **Backup der PVC**, Egress erweitern, OIDC |
 | 4 | captain-kube leerräumen & als 3. Node rejoinen; **danach** Control-Plane auf private IPs (siehe 4d) | offen |
 
 ---
@@ -544,6 +544,16 @@ wegen `install.disableWait` schon vor dem Login, sagt also nichts über den Pod)
 Pod `1/1` (Readiness erst, wenn das Dashboard auf 9119 lauscht – der erste Start kopiert Skills aufs Volume
 und dauert Minuten), Telegram-Meldung „Gateway läuft“ (readyNotify), Zertifikat `hermes-tls` Ready, Login
 unter `https://hermes.hummler.com` mit Basic-Auth, Testnachricht im Dashboard, dann eine Nachricht an den Bot.
+
+**Rollout erledigt am 2026-11-08:** Chart 1.23.0 / Hermes v0.22.5. Erster Install-Versuch scheiterte an der
+Helm-Wartezeit (siehe Stolpersteine), zweiter Versuch mit `install.disableWait` lief durch. Codex-Device-Login
+per Telegram zugestellt und bestätigt (vorher musste in ChatGPT → Einstellungen → Sicherheit die „Anmeldung per
+Gerätecode“ für Codex freigeschaltet werden, sonst lehnt `auth.openai.com/codex/device` den Code ab),
+`auth.json` auf dem Volume, Gateway im Polling-Modus mit Telegram verbunden, Dashboard auf 9119 mit
+Let's-Encrypt-Zertifikat erreichbar (302 → `/login`). Harmlose Warnungen im Log: `/run belongs to uid 0`
+(tmpfs-Mount, s6 läuft trotzdem), `chown /opt/data failed (rootless)` (fsGroup übernimmt), Telegram
+„Discovering fallback IPs via DNS-over-HTTPS“ (DoH ist per default-deny geblockt, Verbindung über
+`api.telegram.org` klappt trotzdem).
 
 ### Egress erweitern (Rezept)
 
