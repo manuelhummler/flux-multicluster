@@ -22,11 +22,6 @@
   ],
   "packageRules": [
     {
-      "matchPackageNames": ["ghcr.io/juno-care/vibecode-mvp-v1"],
-      "automerge": true,
-      "automergeType": "branch"
-    },
-    {
       "matchPackageNames": ["ghcr.io/open-project-e-v/fest-der-demokratie"],
       "versioning": "numeric",
       "automerge": true,
