@@ -30,11 +30,11 @@ spec:
   upgrade:
     remediation:
       retries: 3
-  # Das Chart kennt kein progressDeadlineSeconds; Default 600 s reicht weder fuer den Login noch fuer den
-  # Skills-Sync beim ersten Start. Kustomize-Patch nach dem Rendern.
   postRenderers:
     - kustomize:
         patches:
+          # Das Chart kennt kein progressDeadlineSeconds; Default 600 s reicht weder fuer den Login noch fuer den
+          # Skills-Sync beim ersten Start.
           - target:
               kind: Deployment
               name: hermes
@@ -42,6 +42,62 @@ spec:
               - op: add
                 path: /spec/progressDeadlineSeconds
                 value: 3600
+          # HERMES_HOME muss UID 10000 gehoeren: Hermes prueft den Besitzer des Verzeichnisses, bevor die TUI
+          # (Dashboard-Chat, `hermes chat`) den Control-Socket gateway.sock oeffnet (unsafe_control_path).
+          # Die Wurzel des Longhorn-Volumes gehoert root (fsGroup setzt nur die Gruppe), chown ist unter PSS
+          # restricted nicht moeglich. Daher: /opt/data = Unterverzeichnis "home" des Volumes (subPath), das ein
+          # Init-Container als UID 10000 anlegt (Wurzel ist gruppenbeschreibbar + setgid). Strategic-Merge,
+          # Container nach Namen, Mounts nach mountPath.
+          - target:
+              kind: Deployment
+              name: hermes
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: hermes
+              spec:
+                template:
+                  spec:
+                    initContainers:
+                      - name: seed-config
+                        volumeMounts:
+                          - name: data
+                            mountPath: /opt/data
+                            subPath: home
+                      - name: auth-device-login
+                        volumeMounts:
+                          - name: data
+                            mountPath: /opt/data
+                            subPath: home
+                    containers:
+                      - name: hermes-agent
+                        volumeMounts:
+                          - name: data
+                            mountPath: /opt/data
+                            subPath: home
+          # Muss VOR seed-config laufen (sonst legt kubelet das subPath-Verzeichnis als root an): JSON-Patch an Index 0.
+          - target:
+              kind: Deployment
+              name: hermes
+            patch: |
+              - op: add
+                path: /spec/template/spec/initContainers/0
+                value:
+                  name: prepare-home
+                  image: busybox:1.37
+                  command: ["sh", "-c", "mkdir -p /pvc/home && chmod 700 /pvc/home && ls -ldn /pvc/home"]
+                  securityContext:
+                    runAsNonRoot: true
+                    runAsUser: 10000
+                    runAsGroup: 10000
+                    allowPrivilegeEscalation: false
+                    readOnlyRootFilesystem: true
+                    capabilities:
+                      drop: [ALL]
+                  volumeMounts:
+                    - name: data
+                      mountPath: /pvc
   values:
     # Ressourcen heissen damit schlicht "hermes" (Deployment, Service, ServiceAccount, PVC);
     # darauf verlassen sich die CiliumNetworkPolicies (io.cilium.k8s.policy.serviceaccount: hermes).

@@ -655,6 +655,14 @@ Bis dahin gilt: Änderungen an `SOUL.md`/Skills sind nur auf dem Volume. Behelf:
   (das HelmRelease ist `Ready`, bevor der Pod läuft; Pod-Status per `kubectl` prüfen), ein `postRenderers`-Patch
   setzt `progressDeadlineSeconds: 3600`, und die PVC trägt `helm.sh/resource-policy: keep`, damit kein
   Uninstall das Volume mitnimmt. Upgrades warten weiterhin, der Token liegt dann schon auf dem Volume.
+- **Dashboard-Chat hängt in „queued“ / „retrying in 30s“, Telegram geht aber** (2026-11-08): Die TUI öffnet
+  den Control-Socket `gateway.sock` nur, wenn `HERMES_HOME` dem Hermes-User (UID 10000) gehört
+  (`unsafe_control_path`, `hermes_cli/gateway_runtime_discovery.py`). Die Wurzel eines Longhorn-Volumes gehört
+  root, `fsGroup` setzt nur die Gruppe, chown ist unter PSS `restricted` unmöglich. Lösung im HelmRelease per
+  `postRenderers`: `/opt/data` ist das Unterverzeichnis `home` des Volumes (`subPath`), ein vorgeschalteter
+  Init-Container `prepare-home` (busybox, UID 10000) legt es an. Diagnose: `hermes chat -q test` im Pod zeigt
+  den Fehler im Klartext; `/opt/data/logs/tui_gateway_crash.log` zeigt die Reconnect-Schleife. Die alten
+  Dateien aus der Volume-Wurzel (erster Start) liegen noch dort, nur `auth.json` wurde nach `home/` kopiert.
 - **Image 2,2 GB**: erster Pull dauert, dazu der Skills-Sync beim ersten Start. HelmRelease- und
   Kustomization-Timeout stehen deshalb auf 15 Minuten.
 - **Dashboard „fails closed“**: fehlen die `HERMES_DASHBOARD_BASIC_AUTH_*`-Variablen, startet der
