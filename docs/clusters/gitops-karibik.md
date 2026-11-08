@@ -47,7 +47,7 @@ Cluster-Secrets.
 | ----- | ------ | ------ |
 | **0** | Fundament: Secrets/SOPS, cert-manager, cluster-issuer, metrics-server, longhorn, Cilium-Adoption | **erledigt 2026-11-03** |
 | 1 | Datenschicht: CloudNative-PG (statt Zalando), MariaDB Galera; **kein MinIO** (Backups → DigitalOcean) | **erledigt 2026-11-03** (Daten ziehen pro App in Phase 2/3 um) |
-| 2 | Plattform/Auth: keycloak (**Operator statt Bitnami**, siehe 4c), oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | **in Arbeit** – keycloak-Manifeste eingecheckt, Kustomization bis zum DB-Restore suspended |
+| 2 | Plattform/Auth: keycloak (**Operator statt Bitnami**, siehe 4c), oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | **in Arbeit** – keycloak Test-Rollout erledigt 2026-11-08 (läuft parallel auf `auth.karibik.hummler.com`), oauth2-proxy/Monitoring offen |
 | 3 | Apps: vaultwarden, kimai, dtrack, apicurio, juno-care, fest-der-demokratie, minecraft, hopps-* | offen |
 | 4 | captain-kube leerräumen & als 3. Node rejoinen; **danach** Control-Plane auf private IPs (siehe 4d) | offen |
 
@@ -359,6 +359,20 @@ sondern nur in eine geleerte.
 5. Im Realm `hopps` auf **captain-kube** (produktiv!) die Redirect-URIs für die karibik-Hosts ergänzen
    (oauth2-proxy, Grafana) – so kommen sie mit dem finalen Dump automatisch mit. Auf karibik nur testen,
    nichts konfigurieren, was erhalten bleiben soll: der Stand dort wird beim Cutover überschrieben.
+
+**Schritt A erledigt am 2026-11-08:** Dump 252 KB (PG 16.9, `pg_dump` 17.5 aus dem Spilo-Pod), Restore
+mit 30 ignorierten Fehlern – alle Spilo-Beiwerk (Schema `metric_helpers`, Rollen `admin`/`robot_zmon`,
+Extension-Views `pg_stat_statements`/`pg_stat_kcache`), alle 88 Keycloak-Tabellen übernommen. Keycloak
+26.8.2 migrierte beim ersten Start 26.3.1 → 26.4.0 → … → 26.8.2 (101 Tabellen), 0 Fehler, 7 User, beide
+Realms. `unsupported.podTemplate` greift (Pod läuft unter `restricted`), Operator legt ServiceMonitor an,
+Issuer `https://auth.karibik.hummler.com/realms/hopps`, Admin-/Account-Konsole erreichbar.
+
+**Stolperstein cert-manager hinter default-deny:** Das Zertifikat blieb `pending` („self check … timeout"),
+Hubble zeigte `traefik → cm-acme-http-solver:8089 Policy denied`. `base/ciliumNetworkPolicy` enthält
+bewusst nur `default-deny`; jede App **mit Ingress** muss `../../base/ciliumNetworkPolicy/allow-acme.yaml`
+zusätzlich einbinden (Konvention wie traefik, oauth2-proxy, kube-prometheus-stack, minio). Die Policy in
+die Base aufzunehmen bricht deren Builds („already registered id") – auf **beiden** Clustern, da sie
+dieselbe Base lesen.
 
 *Schritt B – finaler Sync beim Cutover (Keycloak auf captain-kube wird abgeschaltet):*
 
