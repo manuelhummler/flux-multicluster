@@ -35,8 +35,8 @@
       "prPriority": 10
     },
     {
-      "description": "captain-kube minio: pinned to chart 15.0.7, newer Bitnami charts reference images moved to bitnamilegacy (not pullable); cluster is being decommissioned",
-      "matchFileNames": ["infrastructure/base/apps/minio/**"],
+      "description": "captain-kube Bitnami charts (minio 15.0.7, keycloak 24.7.7) pinned to the installed releases: newer Bitnami charts reference images moved to bitnamilegacy (not pullable); cluster is being decommissioned",
+      "matchFileNames": ["infrastructure/base/apps/minio/**", "infrastructure/base/apps/keycloak/**"],
       "enabled": false
     }
   ]

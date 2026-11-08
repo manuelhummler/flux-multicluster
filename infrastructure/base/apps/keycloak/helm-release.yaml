@@ -12,7 +12,11 @@ spec:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
-      version: 25.2.0
+      # Pinned to the installed release: newer Bitnami charts reference images
+      # that Bitnami moved to docker.io/bitnamilegacy and that can no longer be
+      # pulled from docker.io/bitnami. captain-kube is being migrated away
+      # (karibik runs Keycloak via operator), no upgrade intended (see renovate.json).
+      version: 24.7.7
   interval: 1m0s
   values:
     auth:
