@@ -1,7 +1,6 @@
 # Cilium-Policies fuer Hermes. Grundlage: default-deny aus base/ciliumNetworkPolicy (alles zu ausser DNS).
-# Egress bewusst minimal (nur OpenAI-Codex und Telegram); Erweiterung Schritt fuer Schritt,
-# Rezept in docs/clusters/gitops-karibik.md, Abschnitt 4e ("Egress erweitern").
-# Die Policies gelten fuer den ganzen Pod, also auch fuer den Init-Container auth-device-login.
+# Egress bewusst minimal; Erweiterung Schritt fuer Schritt, Rezept in docs/clusters/gitops-karibik.md,
+# Abschnitt 4e ("Egress erweitern"). Die Policies gelten fuer den ganzen Pod, also auch fuer Init-Container.
 
 # Traefik -> Dashboard (HTTP, TLS endet bei Traefik)
 apiVersion: cilium.io/v2
@@ -41,7 +40,8 @@ spec:
         - ports:
             - port: "443"
 ---
-# Hermes -> Telegram Bot-API (Long Polling des Gateways, Device-Code-Zustellung des Init-Containers)
+# Hermes -> Telegram Bot-API (Long Polling des Gateways, Device-Code-Zustellung des Init-Containers,
+# Download von Sprachnachrichten)
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -57,6 +57,28 @@ spec:
         - ports:
             - port: "443"
 ---
+# Lokale Sprach-Transkription (config.stt.provider: local): faster-whisper wird beim ersten Bedarf per uv
+# von PyPI nachinstalliert, das Whisper-Modell von Hugging Face geladen (HF_HUB_DISABLE_XET=1, daher nur
+# *.huggingface.co). Beides einmalig, landet auf der PVC.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-for-local-stt
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: hermes
+  egress:
+    - toFQDNs:
+        - matchName: pypi.org
+        - matchName: files.pythonhosted.org
+        - matchName: huggingface.co
+        - matchPattern: "*.huggingface.co"
+      toPorts:
+        - ports:
+            - port: "443"
+---
 # Noch NICHT freigegeben (bewusst): api.openai.com (nur fuer Provider openai-api noetig), GitHub (Skills-Hub),
+# Hermes-Modellkatalog (hermes-agent.nousresearch.com, raw.githubusercontent.com – nur Komfort fuer /model),
 # allgemeines Internet (Web-Tools des Agenten), kube-apiserver (kein SA-Token gemountet).
 # Jede Erweiterung als eigene Policy hier ergaenzen.

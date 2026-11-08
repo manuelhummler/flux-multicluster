@@ -126,6 +126,23 @@ spec:
         backend: local
       agent:
         gateway_timeout: 1800
+      # Sprachnachrichten (Telegram) lokal transkribieren: faster-whisper im Pod, kein Cloud-Dienst.
+      # faster-whisper ist nicht im Image, Hermes installiert es beim ersten Bedarf per uv nach
+      # /opt/data/installs (Egress pypi.org/files.pythonhosted.org); das Modell kommt von huggingface.co
+      # nach /opt/data/.cache/huggingface (~500 MB fuer "small"). Beides liegt auf der PVC.
+      stt:
+        enabled: true
+        provider: local
+        # leer = Sprache automatisch erkennen (deutsch und englisch gemischt)
+        language: ""
+        local:
+          model: small
+
+    # config.yaml auf dem Volume bei JEDEM Start aus diesem HelmRelease neu schreiben: Git ist die Wahrheit.
+    # Laufzeit-Aenderungen (z. B. /model im Chat) ueberleben damit keinen Pod-Neustart – gewollt, siehe Doku 4e.
+    bootstrap:
+      enabled: true
+      overwrite: true
 
     # Chart-Platzhalter entfernen; alle Secrets kommen aus hermes-secrets (extraEnvFrom, SOPS im Overlay).
     # Das Chart rendert selbst ein (dann leeres) Secret "hermes-env" – daher der andere Name.
@@ -134,6 +151,11 @@ spec:
     extraEnvFrom:
       - secretRef:
           name: hermes-secrets
+    extraEnv:
+      # Whisper-Modelle klassisch ueber cdn-lfs*.huggingface.co laden statt ueber den Xet-Storage
+      # (*.xethub.hf.co) – haelt die Egress-Policy auf *.huggingface.co beschraenkt.
+      - name: HF_HUB_DISABLE_XET
+        value: "1"
 
     # Codex-Device-Login beim Pod-Start (Init-Container auth-device-login, Hermes-Image):
     # holt einen Device-Code bei auth.openai.com, schickt URL + Code per Telegram (TELEGRAM_BOT_TOKEN +
