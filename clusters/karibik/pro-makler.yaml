@@ -2,6 +2,7 @@
 # Die Manifeste liegen dort unter deployment/ (plain Kustomize, kein Helm):
 #   deployment/keycloak  -> eigene Keycloak-Instanz "pro-makler" + Realm-Import (Namespace keycloak, Operator-Grenze)
 #   deployment/app       -> Backend, Frontend, Ingress, Cilium-Policies (Namespace pro-makler)
+#   deployment/mail      -> Dev-Mailsystem GreenMail + Roundcube (Namespace pro-makler): keine Mail verlaesst den Cluster
 # Plattformseite (Namespace, DB-Secrets, Deploy-Key): Kustomization pro-makler-platform in infrastructure.yaml.
 # Secrets im App-Repo sind mit demselben age-Recipient wie karibik verschluesselt (sops-age).
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -80,4 +81,35 @@ spec:
     - apiVersion: apps/v1
       kind: Deployment
       name: pro-makler-frontend
+      namespace: pro-makler
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: pro-makler-mail
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: pro-makler
+  path: ./deployment/mail
+  prune: true
+  dependsOn:
+    - name: pro-makler-platform
+    - name: cert-manager
+    - name: traefik
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: greenmail
+      namespace: pro-makler
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: roundcube
       namespace: pro-makler
