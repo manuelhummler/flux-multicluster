@@ -633,6 +633,10 @@ kubectl --context karibik -n hermes exec -it deploy/hermes -c hermes-agent -- sh
 People aktiviert, OAuth-Client vom Typ „Desktop app“, eigenes Konto als Testnutzer, solange die App im Status
 „Testing“ ist (Tokens laufen dort nach 7 Tagen ab, bis die App „In production“ ist).
 
+**Login erledigt am 2026-11-11:** erster Versuch scheiterte mit `403 access_denied`, weil das Google-Konto nicht als
+Testnutzer der OAuth-App eingetragen war (Console → Zielgruppe → Testnutzer). Danach `--auth-code` OK,
+`--check-live` OK, `google_token.json` auf 0600 gesetzt (das Skript legt sie mit 0644 an).
+
 **Hinweise:** Das Setup fordert alle Scopes an (`--services` aus der Skill-Doku existiert im Skript 1.2.0 nicht).
 Das Token liegt nur auf dem Volume (Backup-TODO); nach Volume-Verlust den Login wiederholen. Das Client-Secret war
 einmal über den Chat hochgeladen worden (Modell-Kontext) – bei Gelegenheit in der Console rotieren.
