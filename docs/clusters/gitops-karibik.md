@@ -608,8 +608,11 @@ bewusst einen Standard-PATH; `python` ist dort `/usr/bin/python` ohne Google-Bib
   (siehe Entscheidungen). Der Container ist per JSON-Patch `copy` eine Kopie von `seed-config`, damit er automatisch
   dasselbe Image wie der Agent nutzt; Indizes der Init-Container stehen im HelmRelease-Kommentar.
 - `/opt/data/bin/python` (plus `python3`): Wrapper auf das Python der aktiven pm-Umgebung mit `/opt/hermes` im
-  Modulpfad. `$HERMES_HOME/bin` liegt laut `tools/environments/local.py` im Terminal-PATH des Agenten, so laufen
-  `setup.py`/`google_api.py` auch aus dem Chat.
+  Modulpfad. **Stolperstein:** Das Terminal-Tool startet `bash -lic`, und Debians `/etc/profile` setzt den PATH
+  dabei auf `/usr/local/bin:/usr/bin:/bin:…` zurück – alles, was Hermes an Pfaden zusammenbaut (`$HERMES_HOME/bin`,
+  Tool-Verzeichnisse), ist in der Agenten-Shell weg, `hermes` nicht auffindbar, `python` = System-Python. Deshalb
+  schreibt `install-extras` zusätzlich `/opt/data/.bash_profile` (HOME des Hermes-Users), das `/opt/data/bin` und
+  `/opt/hermes/bin` voranstellt. Prüfen: `hermes chat -q "Fuehre aus: command -v python; echo \$PATH"`.
 - Client-Secret: [karibik/hermes/google-client-secret-encrypted.yaml](../../infrastructure/karibik/hermes/google-client-secret-encrypted.yaml)
   (Secret `hermes-google-client`, SOPS), per `extraVolumes` als Datei nach `/opt/data/google_client_secret.json`
   (subPath, read-only). Rotation: neues Secret in der Console erzeugen, Datei neu verschlüsseln, pushen.

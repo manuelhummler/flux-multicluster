@@ -151,6 +151,11 @@ spec:
                     chmod 755 /opt/data/bin/python
                     ln -sf python /opt/data/bin/python3
                     echo "[install-extras] /opt/data/bin/python -> $VENV/bin/python"
+                    # Das Terminal-Tool startet "bash -lic": Debians /etc/profile setzt dabei den PATH auf den
+                    # Standard zurueck (ohne /opt/data/bin und /opt/hermes/bin). ~/.bash_profile wird danach
+                    # gelesen und stellt beides voran. HOME des Hermes-Users ist /opt/data.
+                    printf '# Erzeugt vom Init-Container install-extras (HelmRelease hermes) - nicht editieren.\n# Login-Shell des Terminal-Tools: Hermes-Python-Wrapper und hermes-CLI vor den Systempfaden.\nexport PATH="/opt/data/bin:/opt/hermes/bin:$PATH"\n[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"\n' > /opt/data/.bash_profile
+                    echo "[install-extras] /opt/data/.bash_profile geschrieben"
   values:
     # Ressourcen heissen damit schlicht "hermes" (Deployment, Service, ServiceAccount, PVC);
     # darauf verlassen sich die CiliumNetworkPolicies (io.cilium.k8s.policy.serviceaccount: hermes).
