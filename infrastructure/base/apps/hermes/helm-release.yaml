@@ -195,6 +195,22 @@ spec:
         language: ""
         local:
           model: small
+      # Remote-MCP-Server (landen 1:1 in config.yaml). Todoist: offizieller, von Todoist gehosteter MCP aus dem
+      # Hermes-Katalog (/opt/hermes/optional-mcps/todoist), OAuth 2.1 mit Dynamic Client Registration gegen
+      # todoist.com. Kein Secret in Git: das Token entsteht beim einmaligen "Connect" im Dashboard und liegt
+      # danach auf der PVC unter /opt/data/mcp-tokens/todoist*.json. Ablauf in Doku 4e ("Todoist").
+      mcp_servers:
+        todoist:
+          url: https://ai.todoist.net/mcp
+          auth: oauth
+          tools:
+            # wie der Katalog: search/fetch sind die OpenAI-Connector-Kompatibilitaetsschicht (Duplikate der
+            # find-*-Tools), Template-Import/-Export Nische
+            exclude:
+              - search
+              - fetch
+              - export-project-template
+              - import-project-template
 
     # config.yaml auf dem Volume bei JEDEM Start aus diesem HelmRelease neu schreiben: Git ist die Wahrheit.
     # Laufzeit-Aenderungen (z. B. /model im Chat) ueberleben damit keinen Pod-Neustart – gewollt, siehe Doku 4e.

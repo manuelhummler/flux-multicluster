@@ -466,10 +466,11 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | LLM-Provider | `openai-codex`: das ChatGPT-Plus-Abo per **Codex-OAuth** (Device-Code-Login beim Pod-Start, Init-Container `auth-device-login`), Modell `gpt-6-luna` | Entscheidung 2026-11-08 trotz Vorbehalten (siehe „Vorbehalte Codex-OAuth“ unten): kein zusätzlicher API-Key, Kosten im Abo. Das Plus-Abo enthält **keinen** API-Zugang, die Alternative `openai-api` mit Platform-Key steht unten. |
 | Dashboard-Login | Hermes-eigene **Basic-Auth** (`HERMES_DASHBOARD_BASIC_AUTH_*`), später **OIDC gegen Keycloak** | Hermes erzwingt bei Bind auf 0.0.0.0 eine eigene Auth („fails closed“); kein oauth2-proxy nötig (den gibt es auf karibik noch nicht). OIDC erst nach dem Keycloak-Cutover, sonst ändert sich die Issuer-URL. |
 | Terminal-Backend | `local` – der Agent führt Shell-Befehle **im eigenen Pod** aus | `docker` braucht einen Daemon/Socket (im Cluster nicht unterstützt). Der Pod ist die Sandbox: `restricted`, read-only Rootfs, kein ServiceAccount-Token, Cilium default-deny. |
-| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief, für Google Workspace `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `*.googleapis.com` (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
+| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief, für Google Workspace `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `*.googleapis.com`, für Todoist `ai.todoist.net`, `todoist.com` (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
 | Sprachnachrichten | `stt.provider: local` (faster-whisper, Modell `small`, Sprache automatisch) | Self-hosted statt Cloud-STT (Groq/OpenAI bräuchten eigenen Key, OpenAI-STT läuft nicht über den Codex-Login). Node hat 16 Kerne/64 GB, Pod-Limit 2 Gi reicht für `small` (int8). |
 | config.yaml | `bootstrap.overwrite: true` – das Chart schreibt `config.yaml` bei jedem Start aus dem HelmRelease neu | Git ist die Wahrheit; Laufzeit-Änderungen (z. B. `/model` im Chat) überleben keinen Pod-Neustart. Dauerhafte Änderungen gehören ins HelmRelease. |
 | Python-Extras | Init-Container `install-extras` (Kopie von seed-config per postRenderer) führt bei jedem Start `hermes pm install --extra google --extra stt-whisper` aus und legt `/opt/data/bin/python` an | Deklarativ statt Handarbeit im Pod; nach Volume-Verlust baut es sich selbst wieder auf. Der Wrapper gibt Skill-Skripten in der Agenten-Shell das Hermes-Python (sonst System-Python ohne Bibliotheken). |
+| Todoist | Offizieller Remote-MCP-Server `https://ai.todoist.net/mcp` aus dem Hermes-Katalog, deklarativ als `config.mcp_servers.todoist` im HelmRelease; OAuth 2.1 mit Dynamic Client Registration, Einwilligung einmalig über das Dashboard, Token auf dem Volume | Entscheidung 2026-11-11. Kein API-Token in Git/SOPS nötig, kein lokaler MCP-Prozess im Pod (nur HTTP). Scope `data:read_write` (Aufgaben, Projekte, Kommentare lesen und schreiben). |
 | Google Workspace | Skill `google-workspace` mit eigenem OAuth-Desktop-Client; Client-Secret als SOPS-Secret auf `/opt/data/google_client_secret.json` gemountet, Token `google_token.json` auf dem Volume | Entscheidung 2026-11-11. Volle Scopes (Gmail senden/ändern, Drive, Calendar, Sheets, Docs, Contacts) – Inhalte gehen beim Verarbeiten an OpenAI. Nur-Mail-Alternative wäre das `himalaya`-Skill mit App-Passwort. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
 
@@ -647,6 +648,38 @@ der Agent bekommt also nur diese Fehlermeldung. Wer Drive später will: API in d
 Das Token liegt nur auf dem Volume (Backup-TODO); nach Volume-Verlust den Login wiederholen. Das Client-Secret war
 einmal über den Chat hochgeladen worden (Modell-Kontext) – bei Gelegenheit in der Console rotieren.
 
+### Todoist (Aufgaben) – Remote-MCP mit OAuth
+
+Hermes bringt einen kuratierten MCP-Katalog mit (`/opt/hermes/optional-mcps/`, Nous-geprüft). Der Eintrag `todoist`
+ist der **offizielle, von Todoist gehostete** MCP-Server `https://ai.todoist.net/mcp` (reines HTTP, Hermes startet
+dafür keinen Prozess). Statt `hermes mcp install todoist` im Pod steht der Block deklarativ im HelmRelease
+(`config.mcp_servers.todoist`, landet per `bootstrap.overwrite` in `config.yaml`), inklusive der Tool-Ausschlüsse
+aus dem Katalog-Manifest. Authentifizierung ist OAuth 2.1 mit Dynamic Client Registration: der Pod registriert sich
+selbst bei `todoist.com/oauth/register` mit der Callback-URL `https://hermes.hummler.com/api/mcp/oauth/callback/todoist`
+(aus `dashboard.public_url`). Darum braucht es **kein Secret in Git** – es gibt nichts vorab zu hinterlegen.
+
+**Einmalige Einwilligung (nach dem Rollout):**
+
+1. `https://hermes.hummler.com` → **MCP** → Server `todoist` → **Connect** (bzw. *Authorize*). Das Dashboard
+   startet den Flow im Gateway und öffnet die Todoist-Autorisierungsseite.
+2. Bei Todoist anmelden und den Zugriff bestätigen. Todoist leitet auf die Callback-URL zurück; der Pfad ist vom
+   Dashboard-Login ausgenommen, der Flow ist an eine `state`-Prüfung gebunden.
+3. Das Dashboard meldet die gefundenen Tools. Danach eine **neue Session** beginnen (Telegram `/new` oder neuer
+   Chat im Dashboard), damit die Tools geladen werden; hilft das nicht, `kubectl --context karibik -n hermes rollout
+   restart deploy/hermes`.
+
+Token-Dateien: `/opt/data/mcp-tokens/todoist.json` (Access/Refresh-Token, erneuert sich selbst),
+`todoist.client.json` (der dynamisch registrierte Client), `todoist.meta.json`. Liegen nur auf dem Volume
+(Backup-TODO); nach Volume-Verlust Schritt 1–3 wiederholen. Trennen: Dateien löschen oder in Todoist →
+Einstellungen → Integrationen den Zugriff widerrufen.
+
+**Prüfen:** `kubectl --context karibik -n hermes exec deploy/hermes -c hermes-agent -- sh -c 'HOME=/opt/data hermes mcp list'`
+(zeigt den Server und den Auth-Status) und im Chat „Welche Aufgaben habe ich heute in Todoist?“.
+
+**Fallback ohne Dashboard:** `kubectl … exec -it … -- sh -c 'HOME=/opt/data hermes mcp login todoist'` druckt die
+Autorisierungs-URL; der Redirect auf `127.0.0.1:<port>` schlägt im Browser fehl, die komplette Adresszeile dann in
+die Eingabeaufforderung einfügen (Paste-Fallback). Egress wie beim Dashboard-Weg.
+
 ### Egress erweitern (Rezept)
 
 Alle Policies liegen in [base/apps/hermes/networkPolicy.yaml](../../infrastructure/base/apps/hermes/networkPolicy.yaml),
@@ -726,7 +759,8 @@ Die Codex-Variante wurde am 2026-11-08 bewusst gewählt, mit diesen bekannten Pu
 
 ### ⚠️ TODO: Backup der Hermes-PVC
 
-Die PVC `hermes` (Longhorn, 5Gi) ist die **einzige Kopie** von Memory, Skills, Sessions und `config.yaml`.
+Die PVC `hermes` (Longhorn, 10Gi) ist die **einzige Kopie** von Memory, Skills, Sessions, `config.yaml`, der
+OAuth-Tokens (`auth.json` Codex, `google_token.json`, `mcp-tokens/` Todoist) und der nachinstallierten Python-Extras.
 Zwei Longhorn-Replikate schützen vor Node-Ausfall, nicht vor Löschen oder kaputtem Volume. Noch offen:
 
 1. Longhorn-Backup-Target auf karibik einrichten (S3 → DigitalOcean Space `hopps`, eigener Prefix

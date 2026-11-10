@@ -103,6 +103,25 @@ spec:
         - ports:
             - port: "443"
 ---
+# Todoist-MCP (config.mcp_servers.todoist): MCP-Endpunkt ai.todoist.net; OAuth-Server todoist.com fuer
+# Dynamic Client Registration (/oauth/register), Token-Tausch und -Refresh (/oauth/access_token).
+# Die Einwilligung selbst laeuft im Browser des Nutzers, der Callback kommt ueber Traefik ans Dashboard.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-to-todoist
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: hermes
+  egress:
+    - toFQDNs:
+        - matchName: ai.todoist.net
+        - matchName: todoist.com
+      toPorts:
+        - ports:
+            - port: "443"
+---
 # Noch NICHT freigegeben (bewusst): api.openai.com (nur fuer Provider openai-api noetig), GitHub (Skills-Hub),
 # Hermes-Modellkatalog (hermes-agent.nousresearch.com, raw.githubusercontent.com – nur Komfort fuer /model),
 # allgemeines Internet (Web-Tools des Agenten), kube-apiserver (kein SA-Token gemountet).
