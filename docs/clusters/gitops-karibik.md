@@ -636,6 +636,9 @@ People aktiviert, OAuth-Client vom Typ „Desktop app“, eigenes Konto als Test
 **Login erledigt am 2026-11-11:** erster Versuch scheiterte mit `403 access_denied`, weil das Google-Konto nicht als
 Testnutzer der OAuth-App eingetragen war (Console → Zielgruppe → Testnutzer). Danach `--auth-code` OK,
 `--check-live` OK, `google_token.json` auf 0600 gesetzt (das Skript legt sie mit 0644 an).
+Aktivierte APIs im Google-Projekt (Stand 2026-11-11): Gmail, Calendar, People. **Drive, Sheets und Docs bewusst
+nicht aktiviert** – der Scope steckt zwar im Token, Aufrufe enden aber mit `403 … API has not been used in project`,
+der Agent bekommt also nur diese Fehlermeldung. Wer Drive später will: API in der Console aktivieren, kein neuer Login.
 
 **Hinweise:** Das Setup fordert alle Scopes an (`--services` aus der Skill-Doku existiert im Skript 1.2.0 nicht).
 Das Token liegt nur auf dem Volume (Backup-TODO); nach Volume-Verlust den Login wiederholen. Das Client-Secret war
