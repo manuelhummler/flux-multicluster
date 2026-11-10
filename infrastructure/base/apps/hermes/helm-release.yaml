@@ -184,6 +184,12 @@ spec:
         backend: local
       agent:
         gateway_timeout: 1800
+      tools:
+        # Nous-gehostete "Hosted Connectors" (Tool manage_connections, laeuft ueber das Nous-Portal) aus:
+        # nicht genutzt, Egress dorthin ist zu, und der Agent griff sonst zu diesem Tool statt zum
+        # Todoist-MCP und meldete "Connector-Dienst nicht erreichbar".
+        connectors:
+          enabled: false
       # Sprachnachrichten (Telegram) lokal transkribieren: faster-whisper im Pod, kein Cloud-Dienst.
       # faster-whisper ist nicht im Image, Hermes installiert es beim ersten Bedarf per uv nach
       # /opt/data/installs (Egress pypi.org/files.pythonhosted.org); das Modell kommt von huggingface.co

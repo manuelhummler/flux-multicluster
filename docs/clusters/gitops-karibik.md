@@ -664,9 +664,15 @@ selbst bei `todoist.com/oauth/register` mit der Callback-URL `https://hermes.hum
    startet den Flow im Gateway und öffnet die Todoist-Autorisierungsseite.
 2. Bei Todoist anmelden und den Zugriff bestätigen. Todoist leitet auf die Callback-URL zurück; der Pfad ist vom
    Dashboard-Login ausgenommen, der Flow ist an eine `state`-Prüfung gebunden.
-3. Das Dashboard meldet die gefundenen Tools. Danach eine **neue Session** beginnen (Telegram `/new` oder neuer
-   Chat im Dashboard), damit die Tools geladen werden; hilft das nicht, `kubectl --context karibik -n hermes rollout
-   restart deploy/hermes`.
+3. Das Dashboard meldet die gefundenen Tools. Danach **den Pod neu starten** (`kubectl --context karibik -n hermes
+   rollout restart deploy/hermes`): Der laufende Gateway hatte den Server beim Start mangels Token „geparkt“ und
+   belebte ihn nach der Einwilligung auch nach Minuten nicht wieder (Stand 2026-11-11, Chart 1.23.0); beim Start
+   verbindet er mit den gespeicherten Tokens sofort. Dann in Telegram `/new`.
+
+**Stolperstein Hosted Connectors:** Ohne geladene MCP-Tools griff der Agent zum Tool `manage_connections`
+(Nous-gehostete „Hosted Connectors“ über das Nous-Portal, Todoist gibt es dort auch) und meldete „Verbindung zum
+Connector-Dienst fehlgeschlagen“ – das war die Egress-Sperre zu Nous, nicht der MCP. Deshalb steht im HelmRelease
+`config.tools.connectors.enabled: false`; das Tool taucht damit gar nicht mehr im Schema auf.
 
 Token-Dateien: `/opt/data/mcp-tokens/todoist.json` (Access/Refresh-Token, erneuert sich selbst),
 `todoist.client.json` (der dynamisch registrierte Client), `todoist.meta.json`. Liegen nur auf dem Volume
