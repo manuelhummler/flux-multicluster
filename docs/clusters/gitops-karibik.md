@@ -466,9 +466,11 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | LLM-Provider | `openai-codex`: das ChatGPT-Plus-Abo per **Codex-OAuth** (Device-Code-Login beim Pod-Start, Init-Container `auth-device-login`), Modell `gpt-6-luna` | Entscheidung 2026-11-08 trotz Vorbehalten (siehe „Vorbehalte Codex-OAuth“ unten): kein zusätzlicher API-Key, Kosten im Abo. Das Plus-Abo enthält **keinen** API-Zugang, die Alternative `openai-api` mit Platform-Key steht unten. |
 | Dashboard-Login | Hermes-eigene **Basic-Auth** (`HERMES_DASHBOARD_BASIC_AUTH_*`), später **OIDC gegen Keycloak** | Hermes erzwingt bei Bind auf 0.0.0.0 eine eigene Auth („fails closed“); kein oauth2-proxy nötig (den gibt es auf karibik noch nicht). OIDC erst nach dem Keycloak-Cutover, sonst ändert sich die Issuer-URL. |
 | Terminal-Backend | `local` – der Agent führt Shell-Befehle **im eigenen Pod** aus | `docker` braucht einen Daemon/Socket (im Cluster nicht unterstützt). Der Pod ist die Sandbox: `restricted`, read-only Rootfs, kein ServiceAccount-Token, Cilium default-deny. |
-| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
+| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief, für Google Workspace `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `*.googleapis.com` (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
 | Sprachnachrichten | `stt.provider: local` (faster-whisper, Modell `small`, Sprache automatisch) | Self-hosted statt Cloud-STT (Groq/OpenAI bräuchten eigenen Key, OpenAI-STT läuft nicht über den Codex-Login). Node hat 16 Kerne/64 GB, Pod-Limit 2 Gi reicht für `small` (int8). |
 | config.yaml | `bootstrap.overwrite: true` – das Chart schreibt `config.yaml` bei jedem Start aus dem HelmRelease neu | Git ist die Wahrheit; Laufzeit-Änderungen (z. B. `/model` im Chat) überleben keinen Pod-Neustart. Dauerhafte Änderungen gehören ins HelmRelease. |
+| Python-Extras | Init-Container `install-extras` (Kopie von seed-config per postRenderer) führt bei jedem Start `hermes pm install --extra google --extra stt-whisper` aus und legt `/opt/data/bin/python` an | Deklarativ statt Handarbeit im Pod; nach Volume-Verlust baut es sich selbst wieder auf. Der Wrapper gibt Skill-Skripten in der Agenten-Shell das Hermes-Python (sonst System-Python ohne Bibliotheken). |
+| Google Workspace | Skill `google-workspace` mit eigenem OAuth-Desktop-Client; Client-Secret als SOPS-Secret auf `/opt/data/google_client_secret.json` gemountet, Token `google_token.json` auf dem Volume | Entscheidung 2026-11-11. Volle Scopes (Gmail senden/ändern, Drive, Calendar, Sheets, Docs, Contacts) – Inhalte gehen beim Verarbeiten an OpenAI. Nur-Mail-Alternative wäre das `himalaya`-Skill mit App-Passwort. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
 
 ### Aufbau
@@ -588,6 +590,52 @@ per Sprache) oder `/voice tts`; Default-Provider `edge` bräuchte Egress zu Micr
 
 Prüfen bei Problemen: `kubectl -n hermes logs deploy/hermes -c hermes-agent | grep -iE "stt|whisper|transcri"`,
 Drops per Hubble (`--verdict DROPPED`), Installationsstand `hermes pm` im Pod.
+
+### Google Workspace (Gmail, Calendar, Drive, Sheets, Docs)
+
+Das gebündelte Skill `google-workspace` (`/opt/hermes/skills/productivity/google-workspace/`) spricht die Google-APIs
+mit einem eigenen OAuth-Desktop-Client. Es gibt keine config.yaml-Keys und keine Env-Variablen, nur zwei Dateien
+in `HERMES_HOME`: `google_client_secret.json` (aus der Google Cloud Console) und `google_token.json` (Refresh-Token,
+entsteht beim einmaligen Login, erneuert sich selbst).
+
+**Warum das aus dem Chat heraus zuerst scheiterte (2026-11-10):** Die Terminal-Shell des Agenten bekommt von Hermes
+bewusst einen Standard-PATH; `python` ist dort `/usr/bin/python` ohne Google-Bibliotheken, `hermes` nicht auffindbar.
+`setup.py --install-deps` kann außerdem nur aus der aktiven Hermes-Umgebung installieren.
+
+**GitOps-Teile (Commit 2026-11-11):**
+
+- Python-Extra `google` (google-api-python-client, google-auth-oauthlib …) über den Init-Container `install-extras`
+  (siehe Entscheidungen). Der Container ist per JSON-Patch `copy` eine Kopie von `seed-config`, damit er automatisch
+  dasselbe Image wie der Agent nutzt; Indizes der Init-Container stehen im HelmRelease-Kommentar.
+- `/opt/data/bin/python` (plus `python3`): Wrapper auf das Python der aktiven pm-Umgebung mit `/opt/hermes` im
+  Modulpfad. `$HERMES_HOME/bin` liegt laut `tools/environments/local.py` im Terminal-PATH des Agenten, so laufen
+  `setup.py`/`google_api.py` auch aus dem Chat.
+- Client-Secret: [karibik/hermes/google-client-secret-encrypted.yaml](../../infrastructure/karibik/hermes/google-client-secret-encrypted.yaml)
+  (Secret `hermes-google-client`, SOPS), per `extraVolumes` als Datei nach `/opt/data/google_client_secret.json`
+  (subPath, read-only). Rotation: neues Secret in der Console erzeugen, Datei neu verschlüsseln, pushen.
+- Egress: `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `*.googleapis.com` (443).
+
+**Einmaliger OAuth-Login (per `kubectl exec`, nicht im Chat):**
+
+```bash
+kubectl --context karibik -n hermes exec -it deploy/hermes -c hermes-agent -- sh -c 'cd /opt/data && GS=/opt/hermes/skills/productivity/google-workspace/scripts/setup.py; /opt/data/bin/python $GS --check; /opt/data/bin/python $GS --auth-url'
+```
+
+URL im Browser öffnen (als das Google-Konto, das in der Console als Testnutzer steht), einwilligen. Der Redirect auf
+`http://localhost:1/...` schlägt im Browser fehl – das ist so gedacht. Die komplette Adresszeile (oder nur den
+`code=`-Wert) kopieren und eintragen:
+
+```bash
+kubectl --context karibik -n hermes exec -it deploy/hermes -c hermes-agent -- sh -c 'cd /opt/data && /opt/data/bin/python /opt/hermes/skills/productivity/google-workspace/scripts/setup.py --auth-code "<URL-oder-Code>"'
+```
+
+`--check` muss danach `AUTHENTICATED` melden. Google-Seite (einmalig): Projekt, APIs Gmail/Calendar/Drive/Sheets/Docs/
+People aktiviert, OAuth-Client vom Typ „Desktop app“, eigenes Konto als Testnutzer, solange die App im Status
+„Testing“ ist (Tokens laufen dort nach 7 Tagen ab, bis die App „In production“ ist).
+
+**Hinweise:** Das Setup fordert alle Scopes an (`--services` aus der Skill-Doku existiert im Skript 1.2.0 nicht).
+Das Token liegt nur auf dem Volume (Backup-TODO); nach Volume-Verlust den Login wiederholen. Das Client-Secret war
+einmal über den Chat hochgeladen worden (Modell-Kontext) – bei Gelegenheit in der Console rotieren.
 
 ### Egress erweitern (Rezept)
 

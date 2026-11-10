@@ -4,6 +4,9 @@ kind: Kustomization
 namespace: hermes
 resources:
   - ../../base/apps/hermes
+  # Google-Workspace-Skill: OAuth-Client (Desktop-App) aus der Google Cloud Console, wird als Datei
+  # nach /opt/data/google_client_secret.json gemountet (HelmRelease extraVolumes/extraVolumeMounts).
+  - google-client-secret-encrypted.yaml
 generatorOptions:
   disableNameSuffixHash: true
 secretGenerator:

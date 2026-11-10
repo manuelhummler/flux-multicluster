@@ -98,6 +98,59 @@ spec:
                   volumeMounts:
                     - name: data
                       mountPath: /pvc
+          # Python-Extras deklarativ: Init-Container "install-extras" als Kopie von seed-config (gleiches,
+          # von Helm getemplatetes Image, gleicher securityContext, HERMES_HOME und data-Mount), nur Name und
+          # Kommando ersetzt. `hermes pm install --extra ...` ist idempotent (realisierte Umgebung liegt unter
+          # /opt/data/installs, Auswahl in facts.json); Fehler (PyPI offline) blockieren den Start nicht.
+          # Zusaetzlich entsteht /opt/data/bin/python: Wrapper auf das Python der aktiven Umgebung mit
+          # /opt/hermes im Modulpfad, damit Skill-Skripte (google-workspace) aus der Agenten-Shell laufen –
+          # Hermes nimmt $HERMES_HOME/bin selbst in den Terminal-PATH auf.
+          # Indizes nach den vorigen Patches: 0 prepare-home, 1 seed-config, 2 auth-device-login, 3 = Kopie.
+          # Aendert das Chart die Init-Container, schlaegt dieser Patch laut fehl (HelmRelease nicht Ready).
+          - target:
+              kind: Deployment
+              name: hermes
+            patch: |
+              - op: copy
+                from: /spec/template/spec/initContainers/1
+                path: /spec/template/spec/initContainers/-
+              - op: replace
+                path: /spec/template/spec/initContainers/3/name
+                value: install-extras
+              - op: add
+                path: /spec/template/spec/initContainers/3/volumeMounts/-
+                value:
+                  name: tmp-tmpfs
+                  mountPath: /tmp
+              - op: replace
+                path: /spec/template/spec/initContainers/3/command
+                value:
+                  - sh
+                  - -c
+                  - |
+                    set -u
+                    export HOME=/opt/data
+                    echo "[install-extras] hermes pm install --extra google --extra stt-whisper"
+                    if hermes pm install --extra google --extra stt-whisper; then
+                      echo "[install-extras] Umgebung aktuell"
+                    else
+                      echo "[install-extras] WARNUNG: Installation fehlgeschlagen (offline?), Start geht weiter"
+                    fi
+                    VENV=$(/opt/hermes/.venv/bin/python -P - <<'PY'
+                    import glob, json
+                    for f in sorted(glob.glob("/opt/data/installs/*/facts.json")):
+                        env = json.load(open(f)).get("packages", {}).get("venv", {}).get("environment")
+                        if env:
+                            print(env)
+                            break
+                    PY
+                    )
+                    [ -n "$VENV" ] || VENV=/opt/hermes/.venv
+                    mkdir -p /opt/data/bin
+                    printf '#!/bin/sh\n# Erzeugt vom Init-Container install-extras (HelmRelease hermes) - nicht editieren.\n# Python der aktiven Hermes-Umgebung + Hermes-Module, fuer Skill-Skripte aus der Agenten-Shell.\nexport PYTHONPATH="/opt/hermes${PYTHONPATH:+:$PYTHONPATH}"\nexec "%s/bin/python" "$@"\n' "$VENV" > /opt/data/bin/python
+                    chmod 755 /opt/data/bin/python
+                    ln -sf python /opt/data/bin/python3
+                    echo "[install-extras] /opt/data/bin/python -> $VENV/bin/python"
   values:
     # Ressourcen heissen damit schlicht "hermes" (Deployment, Service, ServiceAccount, PVC);
     # darauf verlassen sich die CiliumNetworkPolicies (io.cilium.k8s.policy.serviceaccount: hermes).
@@ -255,11 +308,22 @@ spec:
         emptyDir:
           medium: Memory
           sizeLimit: 64Mi
+      # Google-Workspace-Skill: OAuth-Client-Secret (Overlay-Secret hermes-google-client, SOPS) als Datei
+      # genau dort, wo das Skill sie erwartet. Das OAuth-Token google_token.json entsteht beim einmaligen
+      # Login und bleibt auf dem Volume (Doku 4e, "Google Workspace").
+      - name: google-client
+        secret:
+          secretName: hermes-google-client
+          defaultMode: 0440
     extraVolumeMounts:
       - name: run-tmpfs
         mountPath: /run
       - name: tmp-tmpfs
         mountPath: /tmp
+      - name: google-client
+        mountPath: /opt/data/google_client_secret.json
+        subPath: google_client_secret.json
+        readOnly: true
     team:
       sharedVolume:
         permissions:

@@ -83,6 +83,26 @@ spec:
         - ports:
             - port: "443"
 ---
+# Google-Workspace-Skill (Gmail, Calendar, Drive, Sheets, Docs, Contacts): OAuth-Einwilligung und Token-Refresh
+# (accounts.google.com, oauth2.googleapis.com), Discovery und APIs (www.googleapis.com, <dienst>.googleapis.com).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-to-google-workspace
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: hermes
+  egress:
+    - toFQDNs:
+        - matchName: accounts.google.com
+        - matchName: oauth2.googleapis.com
+        - matchName: www.googleapis.com
+        - matchPattern: "*.googleapis.com"
+      toPorts:
+        - ports:
+            - port: "443"
+---
 # Noch NICHT freigegeben (bewusst): api.openai.com (nur fuer Provider openai-api noetig), GitHub (Skills-Hub),
 # Hermes-Modellkatalog (hermes-agent.nousresearch.com, raw.githubusercontent.com – nur Komfort fuer /model),
 # allgemeines Internet (Web-Tools des Agenten), kube-apiserver (kein SA-Token gemountet).
