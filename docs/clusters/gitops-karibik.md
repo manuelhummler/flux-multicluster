@@ -466,11 +466,12 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | LLM-Provider | `openai-codex`: das ChatGPT-Plus-Abo per **Codex-OAuth** (Device-Code-Login beim Pod-Start, Init-Container `auth-device-login`), Modell `gpt-6-luna` | Entscheidung 2026-11-08 trotz Vorbehalten (siehe „Vorbehalte Codex-OAuth“ unten): kein zusätzlicher API-Key, Kosten im Abo. Das Plus-Abo enthält **keinen** API-Zugang, die Alternative `openai-api` mit Platform-Key steht unten. |
 | Dashboard-Login | Hermes-eigene **Basic-Auth** (`HERMES_DASHBOARD_BASIC_AUTH_*`), später **OIDC gegen Keycloak** | Hermes erzwingt bei Bind auf 0.0.0.0 eine eigene Auth („fails closed“); kein oauth2-proxy nötig (den gibt es auf karibik noch nicht). OIDC erst nach dem Keycloak-Cutover, sonst ändert sich die Issuer-URL. |
 | Terminal-Backend | `local` – der Agent führt Shell-Befehle **im eigenen Pod** aus | `docker` braucht einen Daemon/Socket (im Cluster nicht unterstützt). Der Pod ist die Sandbox: `restricted`, read-only Rootfs, kein ServiceAccount-Token, Cilium default-deny. |
-| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief, für Google Workspace `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `*.googleapis.com`, für Todoist `ai.todoist.net`, `todoist.com`, für GitHub `github.com`, `api.github.com`, `raw.githubusercontent.com`, `codeload.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com` (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
+| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief, für Google Workspace `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `*.googleapis.com`, für Todoist `ai.todoist.net`, `todoist.com`, für GitHub `github.com`, `api.github.com`, `raw.githubusercontent.com`, `codeload.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, für GitLab `gitlab.com` (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
 | Sprachnachrichten | `stt.provider: local` (faster-whisper, Modell `small`, Sprache automatisch) | Self-hosted statt Cloud-STT (Groq/OpenAI bräuchten eigenen Key, OpenAI-STT läuft nicht über den Codex-Login). Node hat 16 Kerne/64 GB, Pod-Limit 2 Gi reicht für `small` (int8). |
 | config.yaml | `bootstrap.overwrite: true` – das Chart schreibt `config.yaml` bei jedem Start aus dem HelmRelease neu | Git ist die Wahrheit; Laufzeit-Änderungen (z. B. `/model` im Chat) überleben keinen Pod-Neustart. Dauerhafte Änderungen gehören ins HelmRelease. |
 | Python-Extras | Init-Container `install-extras` (Kopie von seed-config per postRenderer) führt bei jedem Start `hermes pm install --extra google --extra stt-whisper` aus und legt `/opt/data/bin/python` an | Deklarativ statt Handarbeit im Pod; nach Volume-Verlust baut es sich selbst wieder auf. Der Wrapper gibt Skill-Skripten in der Agenten-Shell das Hermes-Python (sonst System-Python ohne Bibliotheken). |
 | GitHub | Personal Access Token (classic, Scopes `repo`, `workflow`, `read:org`) als `GITHUB_TOKEN` in `hermes-secrets`; der Init-Container `install-extras` installiert die `gh`-CLI (gepinnt, SHA256-geprüft) nach `/opt/data/bin` und schreibt `~/.git-credentials` und `~/.config/gh/hosts.yml` | Entscheidung 2026-11-11. Classic statt fine-grained, weil nur der classic Token *alle* Repos abdeckt, auf die das Konto Zugriff hat (fremde Konten, Orgs ohne Fine-grained-Freigabe). Hermes streicht `GITHUB_TOKEN` absichtlich aus jedem Subprozess, daher der Umweg über Dateien. |
+| GitLab | Zweigleisig: offizieller Remote-MCP `https://gitlab.com/api/v4/mcp` (Katalog-Eintrag, OAuth über das Dashboard) für Issues, Merge Requests, Pipelines; dazu `GITLAB_TOKEN` (PAT, nur `read_repository`/`write_repository`) in `hermes-secrets` für git über HTTPS, vom Init-Container in `~/.git-credentials` eingetragen | Entscheidung 2026-11-11. Es gibt kein gebündeltes GitLab-Skill und keine `glab`-CLI im Image; der MCP ersetzt die API-Seite, der PAT bleibt auf Repo-Inhalte beschränkt. |
 | Todoist | Offizieller Remote-MCP-Server `https://ai.todoist.net/mcp` aus dem Hermes-Katalog, deklarativ als `config.mcp_servers.todoist` im HelmRelease; OAuth 2.1 mit Dynamic Client Registration, Einwilligung einmalig über das Dashboard, Token auf dem Volume | Entscheidung 2026-11-11. Kein API-Token in Git/SOPS nötig, kein lokaler MCP-Prozess im Pod (nur HTTP). Scope `data:read_write` (Aufgaben, Projekte, Kommentare lesen und schreiben). |
 | Google Workspace | Skill `google-workspace` mit eigenem OAuth-Desktop-Client; Client-Secret als SOPS-Secret auf `/opt/data/google_client_secret.json` gemountet, Token `google_token.json` auf dem Volume | Entscheidung 2026-11-11. Volle Scopes (Gmail senden/ändern, Drive, Calendar, Sheets, Docs, Contacts) – Inhalte gehen beim Verarbeiten an OpenAI. Nur-Mail-Alternative wäre das `himalaya`-Skill mit App-Passwort. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
@@ -733,6 +734,32 @@ gegen `api.github.com`).
 Webseiten), Prompt-Injection ist damit ein reales Risiko für die Repos. Ablaufdatum setzen, bei Verdacht unter
 <https://github.com/settings/tokens> widerrufen, Rotation = neue Zeile in der SOPS-Datei plus Pod-Neustart.
 
+### GitLab (Issues, Merge Requests, Pipelines, Repos)
+
+Für gitlab.com zwei Wege, weil Hermes anders als für GitHub kein Skill und keine CLI mitbringt:
+
+1. **Remote-MCP** `config.mcp_servers.gitlab` (Katalog-Eintrag `/opt/hermes/optional-mcps/gitlab`, URL
+   `https://gitlab.com/api/v4/mcp`, Scope `mcp`): Issues, Merge Requests, Pipelines, Repo-Kontext als Tools.
+   OAuth 2.1 mit Dynamic Client Registration gegen `gitlab.com/oauth/*`, Einwilligung wie bei Todoist:
+   Dashboard → **MCP** → `gitlab` → **Connect**, bei GitLab bestätigen, danach **Pod neu starten**
+   (`kubectl --context karibik -n hermes rollout restart deploy/hermes`), dann `/new` in Telegram. Token unter
+   `/opt/data/mcp-tokens/gitlab*.json` (Backup-TODO).
+2. **git über HTTPS** für clone/push: `GITLAB_TOKEN` in `hermes-secrets`; `install-extras` hängt
+   `https://oauth2:<token>@gitlab.com` an `~/.git-credentials` an (gemeinsame Datei mit GitHub, 0600).
+
+**PAT anlegen:** <https://gitlab.com/-/user_settings/personal_access_tokens> → Name `hermes-karibik`, Ablauf
+(gitlab.com erzwingt maximal 1 Jahr), Scopes **`read_repository`** und **`write_repository`**. Bewusst nicht `api`:
+die API-Seite macht der MCP mit eigenem, widerrufbarem OAuth-Token; der PAT kann damit nur Repo-Inhalte lesen und
+pushen, keine Issues, Mitglieder oder Einstellungen ändern. Der Token gilt für alle Projekte, in denen das Konto
+Mitglied ist (eigene, Gruppen wie `hummler-gbr`, Einladungen).
+
+**Hinterlegen:** wie bei GitHub (`sops infrastructure/karibik/hermes/hermes-env-encrypted.env`, Zeile
+`GITLAB_TOKEN=glpat-...`, pushen, Reconcile, `rollout restart`).
+
+**Prüfen:** Init-Log „GitLab-Credentials für git geschrieben“, dann im Pod
+`bash -lc 'git ls-remote --heads https://gitlab.com/hummler-gbr/pro-makler.git | head -2'`; MCP-Seite im Chat:
+„Liste die offenen Merge Requests in hummler-gbr/pro-makler.“
+
 ### Egress erweitern (Rezept)
 
 Alle Policies liegen in [base/apps/hermes/networkPolicy.yaml](../../infrastructure/base/apps/hermes/networkPolicy.yaml),
@@ -813,7 +840,7 @@ Die Codex-Variante wurde am 2026-11-08 bewusst gewählt, mit diesen bekannten Pu
 ### ⚠️ TODO: Backup der Hermes-PVC
 
 Die PVC `hermes` (Longhorn, 10Gi) ist die **einzige Kopie** von Memory, Skills, Sessions, `config.yaml`, der
-OAuth-Tokens (`auth.json` Codex, `google_token.json`, `mcp-tokens/` Todoist) und der nachinstallierten Python-Extras.
+OAuth-Tokens (`auth.json` Codex, `google_token.json`, `mcp-tokens/` Todoist und GitLab) und der nachinstallierten Python-Extras.
 Zwei Longhorn-Replikate schützen vor Node-Ausfall, nicht vor Löschen oder kaputtem Volume. Noch offen:
 
 1. Longhorn-Backup-Target auf karibik einrichten (S3 → DigitalOcean Space `hopps`, eigener Prefix

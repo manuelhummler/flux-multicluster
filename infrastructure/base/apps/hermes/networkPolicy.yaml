@@ -147,6 +147,23 @@ spec:
         - ports:
             - port: "443"
 ---
+# GitLab (gitlab.com, Doku 4e "GitLab"): Remote-MCP (/api/v4/mcp), OAuth-Server (Dynamic Client Registration,
+# Token-Tausch und -Refresh unter /oauth/*) und git ueber HTTPS – alles derselbe Host.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-to-gitlab
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: hermes
+  egress:
+    - toFQDNs:
+        - matchName: gitlab.com
+      toPorts:
+        - ports:
+            - port: "443"
+---
 # Noch NICHT freigegeben (bewusst): api.openai.com (nur fuer Provider openai-api noetig),
 # hermes-agent.nousresearch.com (Modellkatalog, nur Komfort fuer /model), allgemeines Internet (Web-Tools des
 # Agenten), kube-apiserver (kein SA-Token gemountet).

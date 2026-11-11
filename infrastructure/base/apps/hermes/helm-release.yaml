@@ -187,18 +187,28 @@ spec:
                     # jedes Subprozesses (Tier-1-Secret). git und gh lesen den Token deshalb aus Dateien in HOME:
                     # ~/.git-credentials (credential.helper store) und ~/.config/gh/hosts.yml. Beides wird bei
                     # jedem Start aus dem Secret neu geschrieben bzw. ohne Token entfernt.
+                    umask 077
+                    : > /opt/data/.git-credentials
                     GH_TOKEN_VALUE=$(printenv GITHUB_TOKEN || true)
                     if [ -n "$GH_TOKEN_VALUE" ] && [ "$GH_TOKEN_VALUE" != "REPLACE_ME" ]; then
-                      umask 077
-                      printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN_VALUE" > /opt/data/.git-credentials
+                      printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN_VALUE" >> /opt/data/.git-credentials
                       mkdir -p /opt/data/.config/gh
                       printf 'github.com:\n    oauth_token: %s\n    git_protocol: https\n' "$GH_TOKEN_VALUE" > /opt/data/.config/gh/hosts.yml
-                      umask 022
                       echo "[install-extras] GitHub-Credentials fuer git und gh geschrieben"
                     else
-                      rm -f /opt/data/.git-credentials /opt/data/.config/gh/hosts.yml
+                      rm -f /opt/data/.config/gh/hosts.yml
                       echo "[install-extras] GITHUB_TOKEN nicht gesetzt: kein GitHub-Zugang in der Agenten-Shell"
                     fi
+                    # GitLab (gitlab.com): Personal Access Token fuer git ueber HTTPS; Benutzername bei GitLab-PATs ist "oauth2".
+                    GL_TOKEN_VALUE=$(printenv GITLAB_TOKEN || true)
+                    if [ -n "$GL_TOKEN_VALUE" ] && [ "$GL_TOKEN_VALUE" != "REPLACE_ME" ]; then
+                      printf 'https://oauth2:%s@gitlab.com\n' "$GL_TOKEN_VALUE" >> /opt/data/.git-credentials
+                      echo "[install-extras] GitLab-Credentials fuer git geschrieben"
+                    else
+                      echo "[install-extras] GITLAB_TOKEN nicht gesetzt: kein GitLab-Git-Zugang in der Agenten-Shell"
+                    fi
+                    [ -s /opt/data/.git-credentials ] || rm -f /opt/data/.git-credentials
+                    umask 022
                     # Git-Identitaet und Credential-Helper; Commits des Agenten sind am Namen erkennbar.
                     printf '# Erzeugt vom Init-Container install-extras (HelmRelease hermes) - nicht editieren.\n[user]\n\tname = Hermes Agent\n\temail = manuel@hummler.com\n[credential]\n\thelper = store\n[init]\n\tdefaultBranch = main\n' > /opt/data/.gitconfig
                     echo "[install-extras] /opt/data/.gitconfig geschrieben"
@@ -263,6 +273,17 @@ spec:
               - fetch
               - export-project-template
               - import-project-template
+        # GitLab (gitlab.com): offizieller Remote-MCP aus dem Katalog (/opt/hermes/optional-mcps/gitlab), OAuth 2.1
+        # mit Dynamic Client Registration, Einwilligung einmalig im Dashboard, Token unter /opt/data/mcp-tokens/.
+        # Deckt Issues, Merge Requests, Pipelines, Repo-Kontext ab; git clone/push laeuft ueber GITLAB_TOKEN
+        # (hermes-secrets, Init-Container install-extras). Doku 4e ("GitLab").
+        gitlab:
+          url: https://gitlab.com/api/v4/mcp
+          auth: oauth
+          tools:
+            exclude:
+              - get_mcp_server_version
+              - list_duo_sessions
 
     # config.yaml auf dem Volume bei JEDEM Start aus diesem HelmRelease neu schreiben: Git ist die Wahrheit.
     # Laufzeit-Aenderungen (z. B. /model im Chat) ueberleben damit keinen Pod-Neustart – gewollt, siehe Doku 4e.
