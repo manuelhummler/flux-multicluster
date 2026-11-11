@@ -122,7 +122,32 @@ spec:
         - ports:
             - port: "443"
 ---
-# Noch NICHT freigegeben (bewusst): api.openai.com (nur fuer Provider openai-api noetig), GitHub (Skills-Hub),
-# Hermes-Modellkatalog (hermes-agent.nousresearch.com, raw.githubusercontent.com – nur Komfort fuer /model),
-# allgemeines Internet (Web-Tools des Agenten), kube-apiserver (kein SA-Token gemountet).
+# GitHub (Entscheidung 2026-11-11, Doku 4e "GitHub"): git ueber HTTPS und die REST-API fuer das github-Skill
+# und den Skills-Hub (github.com, api.github.com, raw.githubusercontent.com), Archiv-/Release-Downloads
+# (codeload.github.com, objects.githubusercontent.com) und die gh-CLI-Installation des Init-Containers
+# (release-assets.githubusercontent.com). Damit ist nebenbei auch der Hermes-Modellkatalog (raw.githubusercontent.com)
+# erreichbar.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-to-github
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: hermes
+  egress:
+    - toFQDNs:
+        - matchName: github.com
+        - matchName: api.github.com
+        - matchName: raw.githubusercontent.com
+        - matchName: codeload.github.com
+        - matchName: objects.githubusercontent.com
+        - matchName: release-assets.githubusercontent.com
+      toPorts:
+        - ports:
+            - port: "443"
+---
+# Noch NICHT freigegeben (bewusst): api.openai.com (nur fuer Provider openai-api noetig),
+# hermes-agent.nousresearch.com (Modellkatalog, nur Komfort fuer /model), allgemeines Internet (Web-Tools des
+# Agenten), kube-apiserver (kein SA-Token gemountet).
 # Jede Erweiterung als eigene Policy hier ergaenzen.

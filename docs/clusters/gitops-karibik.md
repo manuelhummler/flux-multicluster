@@ -466,10 +466,11 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | LLM-Provider | `openai-codex`: das ChatGPT-Plus-Abo per **Codex-OAuth** (Device-Code-Login beim Pod-Start, Init-Container `auth-device-login`), Modell `gpt-6-luna` | Entscheidung 2026-11-08 trotz Vorbehalten (siehe „Vorbehalte Codex-OAuth“ unten): kein zusätzlicher API-Key, Kosten im Abo. Das Plus-Abo enthält **keinen** API-Zugang, die Alternative `openai-api` mit Platform-Key steht unten. |
 | Dashboard-Login | Hermes-eigene **Basic-Auth** (`HERMES_DASHBOARD_BASIC_AUTH_*`), später **OIDC gegen Keycloak** | Hermes erzwingt bei Bind auf 0.0.0.0 eine eigene Auth („fails closed“); kein oauth2-proxy nötig (den gibt es auf karibik noch nicht). OIDC erst nach dem Keycloak-Cutover, sonst ändert sich die Issuer-URL. |
 | Terminal-Backend | `local` – der Agent führt Shell-Befehle **im eigenen Pod** aus | `docker` braucht einen Daemon/Socket (im Cluster nicht unterstützt). Der Pod ist die Sandbox: `restricted`, read-only Rootfs, kein ServiceAccount-Token, Cilium default-deny. |
-| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief, für Google Workspace `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `*.googleapis.com`, für Todoist `ai.todoist.net`, `todoist.com` (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
+| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief, für Google Workspace `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `*.googleapis.com`, für Todoist `ai.todoist.net`, `todoist.com`, für GitHub `github.com`, `api.github.com`, `raw.githubusercontent.com`, `codeload.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com` (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
 | Sprachnachrichten | `stt.provider: local` (faster-whisper, Modell `small`, Sprache automatisch) | Self-hosted statt Cloud-STT (Groq/OpenAI bräuchten eigenen Key, OpenAI-STT läuft nicht über den Codex-Login). Node hat 16 Kerne/64 GB, Pod-Limit 2 Gi reicht für `small` (int8). |
 | config.yaml | `bootstrap.overwrite: true` – das Chart schreibt `config.yaml` bei jedem Start aus dem HelmRelease neu | Git ist die Wahrheit; Laufzeit-Änderungen (z. B. `/model` im Chat) überleben keinen Pod-Neustart. Dauerhafte Änderungen gehören ins HelmRelease. |
 | Python-Extras | Init-Container `install-extras` (Kopie von seed-config per postRenderer) führt bei jedem Start `hermes pm install --extra google --extra stt-whisper` aus und legt `/opt/data/bin/python` an | Deklarativ statt Handarbeit im Pod; nach Volume-Verlust baut es sich selbst wieder auf. Der Wrapper gibt Skill-Skripten in der Agenten-Shell das Hermes-Python (sonst System-Python ohne Bibliotheken). |
+| GitHub | Personal Access Token (classic, Scopes `repo`, `workflow`, `read:org`) als `GITHUB_TOKEN` in `hermes-secrets`; der Init-Container `install-extras` installiert die `gh`-CLI (gepinnt, SHA256-geprüft) nach `/opt/data/bin` und schreibt `~/.git-credentials` und `~/.config/gh/hosts.yml` | Entscheidung 2026-11-11. Classic statt fine-grained, weil nur der classic Token *alle* Repos abdeckt, auf die das Konto Zugriff hat (fremde Konten, Orgs ohne Fine-grained-Freigabe). Hermes streicht `GITHUB_TOKEN` absichtlich aus jedem Subprozess, daher der Umweg über Dateien. |
 | Todoist | Offizieller Remote-MCP-Server `https://ai.todoist.net/mcp` aus dem Hermes-Katalog, deklarativ als `config.mcp_servers.todoist` im HelmRelease; OAuth 2.1 mit Dynamic Client Registration, Einwilligung einmalig über das Dashboard, Token auf dem Volume | Entscheidung 2026-11-11. Kein API-Token in Git/SOPS nötig, kein lokaler MCP-Prozess im Pod (nur HTTP). Scope `data:read_write` (Aufgaben, Projekte, Kommentare lesen und schreiben). |
 | Google Workspace | Skill `google-workspace` mit eigenem OAuth-Desktop-Client; Client-Secret als SOPS-Secret auf `/opt/data/google_client_secret.json` gemountet, Token `google_token.json` auf dem Volume | Entscheidung 2026-11-11. Volle Scopes (Gmail senden/ändern, Drive, Calendar, Sheets, Docs, Contacts) – Inhalte gehen beim Verarbeiten an OpenAI. Nur-Mail-Alternative wäre das `himalaya`-Skill mit App-Passwort. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
@@ -685,6 +686,46 @@ Einstellungen → Integrationen den Zugriff widerrufen.
 **Fallback ohne Dashboard:** `kubectl … exec -it … -- sh -c 'HOME=/opt/data hermes mcp login todoist'` druckt die
 Autorisierungs-URL; der Redirect auf `127.0.0.1:<port>` schlägt im Browser fehl, die komplette Adresszeile dann in
 die Eingabeaufforderung einfügen (Paste-Fallback). Egress wie beim Dashboard-Weg.
+
+### GitHub (Repos, PRs, Issues, CI)
+
+Das gebündelte Skill `github` (`/opt/hermes/skills/software-development/github/`) arbeitet mit der `gh`-CLI und
+fällt auf `git` plus REST zurück. Hermes selbst nutzt `GITHUB_TOKEN` für den Skills-Hub und den Modellkatalog.
+Zwei Eigenheiten bestimmen den Aufbau: Das Image bringt **kein `gh`** mit, und Hermes **streicht `GITHUB_TOKEN`
+aus der Umgebung jedes Subprozesses** (Tier-1-Secret in `tools/environments/local_env_policy.py`), auch aus der
+Agenten-Shell. Deshalb erledigt der Init-Container `install-extras` beides deklarativ bei jedem Start:
+
+- `gh` in gepinnter Version (`GH_VERSION`/`GH_SHA256` im HelmRelease) nach `/opt/data/bin/gh`, Download nur,
+  wenn die Datei fehlt oder eine andere Version hat. Bump von Hand: neue Version und Checksumme aus
+  `gh_<version>_checksums.txt` des Releases eintragen (Renovate kennt diesen Pin nicht).
+- Aus `GITHUB_TOKEN` die Dateien `~/.git-credentials` (git, `credential.helper store`) und
+  `~/.config/gh/hosts.yml` (gh) in `/opt/data`, Modus 0600; ohne Token werden sie entfernt. Dazu `~/.gitconfig`
+  mit Identität `Hermes Agent <manuel@hummler.com>`, so sind Commits des Agenten am Namen erkennbar.
+- Egress-Policy `allow-egress-to-github` (Hosts siehe Entscheidungstabelle).
+
+**Token anlegen (einmalig, GitHub-Seite):** <https://github.com/settings/tokens> → „Generate new token (classic)“,
+Name `hermes-karibik`, Ablauf z. B. 90 Tage, Scopes **`repo`** (alle Repos lesen/schreiben, PRs), **`workflow`**
+(Actions-Workflows ändern/auslösen), **`read:org`** (Org-Repos auflisten). Ein fine-grained Token wäre feiner
+steuerbar, deckt aber nur Repos des eigenen Kontos und freigebender Orgs ab, nicht Repos fremder Konten, auf die
+du als Collaborator Zugriff hast. Nur lesen? Dann statt `repo` nur `public_repo` plus `read:org`.
+
+**Token hinterlegen:**
+
+```bash
+sops infrastructure/karibik/hermes/hermes-env-encrypted.env   # Zeile GITHUB_TOKEN=ghp_... ergänzen, speichern
+git commit -am "hermes: GITHUB_TOKEN" && git push
+flux --context karibik reconcile kustomization flux-system --with-source && flux --context karibik reconcile kustomization hermes
+kubectl --context karibik -n hermes rollout restart deploy/hermes   # Secret-Aenderung allein startet den Pod nicht neu
+```
+
+**Prüfen:** `kubectl --context karibik -n hermes logs deploy/hermes -c install-extras` muss „gh … installiert/vorhanden“
+und „GitHub-Credentials … geschrieben“ zeigen; dann im Chat „Prüfe mit gh auth status, ob du bei GitHub angemeldet
+bist, und liste meine fünf zuletzt geänderten Repos.“ Hermes-seitig zusätzlich `hermes doctor` (prüft den Token
+gegen `api.github.com`).
+
+**Sicherheit:** Der Token kann in *allen* Repos des Kontos pushen. Der Agent verarbeitet fremde Inhalte (Mails,
+Webseiten), Prompt-Injection ist damit ein reales Risiko für die Repos. Ablaufdatum setzen, bei Verdacht unter
+<https://github.com/settings/tokens> widerrufen, Rotation = neue Zeile in der SOPS-Datei plus Pod-Neustart.
 
 ### Egress erweitern (Rezept)
 

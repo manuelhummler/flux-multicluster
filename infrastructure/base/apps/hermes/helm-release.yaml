@@ -122,6 +122,12 @@ spec:
                 value:
                   name: tmp-tmpfs
                   mountPath: /tmp
+              # GITHUB_TOKEN aus hermes-secrets (seed-config hat kein envFrom; auth-device-login schon)
+              - op: add
+                path: /spec/template/spec/initContainers/3/envFrom
+                value:
+                  - secretRef:
+                      name: hermes-secrets
               - op: replace
                 path: /spec/template/spec/initContainers/3/command
                 value:
@@ -156,6 +162,42 @@ spec:
                     # gelesen und stellt beides voran. HOME des Hermes-Users ist /opt/data.
                     printf '# Erzeugt vom Init-Container install-extras (HelmRelease hermes) - nicht editieren.\n# Login-Shell des Terminal-Tools: Hermes-Python-Wrapper und hermes-CLI vor den Systempfaden.\nexport PATH="/opt/data/bin:/opt/hermes/bin:$PATH"\n[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"\n' > /opt/data/.bash_profile
                     echo "[install-extras] /opt/data/.bash_profile geschrieben"
+                    # GitHub-CLI (nicht im Image): gepinnte Version nach /opt/data/bin/gh, nur wenn fehlend oder
+                    # anders versioniert; SHA256 aus der Release-Checksummendatei. Version bei Bedarf hier bumpen.
+                    GH_VERSION=2.103.3
+                    GH_SHA256=4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d
+                    if ! /opt/data/bin/gh --version 2>/dev/null | grep -q "gh version $GH_VERSION "; then
+                      GH_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
+                      if curl -fsSL --retry 2 -o /tmp/gh.tgz "$GH_URL" \
+                         && echo "$GH_SHA256  /tmp/gh.tgz" | sha256sum -c --quiet \
+                         && tar -xzf /tmp/gh.tgz -C /tmp "gh_${GH_VERSION}_linux_amd64/bin/gh" \
+                         && install -m 755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /opt/data/bin/gh; then
+                        echo "[install-extras] gh $GH_VERSION installiert"
+                      else
+                        echo "[install-extras] WARNUNG: gh-Download fehlgeschlagen (Egress github.com/release-assets.githubusercontent.com?)"
+                      fi
+                      rm -rf /tmp/gh.tgz "/tmp/gh_${GH_VERSION}_linux_amd64"
+                    else
+                      echo "[install-extras] gh $GH_VERSION vorhanden"
+                    fi
+                    # GitHub-Zugang fuer die Agenten-Shell: Hermes entfernt GITHUB_TOKEN bewusst aus der Umgebung
+                    # jedes Subprozesses (Tier-1-Secret). git und gh lesen den Token deshalb aus Dateien in HOME:
+                    # ~/.git-credentials (credential.helper store) und ~/.config/gh/hosts.yml. Beides wird bei
+                    # jedem Start aus dem Secret neu geschrieben bzw. ohne Token entfernt.
+                    if [ -n "${GITHUB_TOKEN:-}" ] && [ "${GITHUB_TOKEN}" != "REPLACE_ME" ]; then
+                      umask 077
+                      printf 'https://x-access-token:%s@github.com\n' "$GITHUB_TOKEN" > /opt/data/.git-credentials
+                      mkdir -p /opt/data/.config/gh
+                      printf 'github.com:\n    oauth_token: %s\n    git_protocol: https\n' "$GITHUB_TOKEN" > /opt/data/.config/gh/hosts.yml
+                      umask 022
+                      echo "[install-extras] GitHub-Credentials fuer git und gh geschrieben"
+                    else
+                      rm -f /opt/data/.git-credentials /opt/data/.config/gh/hosts.yml
+                      echo "[install-extras] GITHUB_TOKEN nicht gesetzt: kein GitHub-Zugang in der Agenten-Shell"
+                    fi
+                    # Git-Identitaet und Credential-Helper; Commits des Agenten sind am Namen erkennbar.
+                    printf '# Erzeugt vom Init-Container install-extras (HelmRelease hermes) - nicht editieren.\n[user]\n\tname = Hermes Agent\n\temail = manuel@hummler.com\n[credential]\n\thelper = store\n[init]\n\tdefaultBranch = main\n' > /opt/data/.gitconfig
+                    echo "[install-extras] /opt/data/.gitconfig geschrieben"
   values:
     # Ressourcen heissen damit schlicht "hermes" (Deployment, Service, ServiceAccount, PVC);
     # darauf verlassen sich die CiliumNetworkPolicies (io.cilium.k8s.policy.serviceaccount: hermes).
