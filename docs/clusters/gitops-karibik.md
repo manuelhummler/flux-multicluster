@@ -703,6 +703,12 @@ Agenten-Shell. Deshalb erledigt der Init-Container `install-extras` beides dekla
   mit Identität `Hermes Agent <manuel@hummler.com>`, so sind Commits des Agenten am Namen erkennbar.
 - Egress-Policy `allow-egress-to-github` (Hosts siehe Entscheidungstabelle).
 
+**Stolperstein beim ersten Rollout (2026-11-11):** Die Flux-Kustomization `hermes` läuft mit `postBuild.substituteFrom`
+(envsubst, strict). Jede `${VAR}`-Schreibweise in Init-Scripten im HelmRelease wird dabei als Cluster-Variable
+gelesen: unbekannte brechen den Build ab („variable not set: GH_VERSION“, die alte Version bleibt stehen), Formen
+wie `${PYTHONPATH:+…}` werden still verstümmelt (so war der Python-Wrapper mit `:$PYTHONPATH` gelandet). In
+Scripten deshalb nur `$VAR` / `"$VAR"` und `printenv`, nie `${VAR}`.
+
 **Token anlegen (einmalig, GitHub-Seite):** <https://github.com/settings/tokens> → „Generate new token (classic)“,
 Name `hermes-karibik`, Ablauf z. B. 90 Tage, Scopes **`repo`** (alle Repos lesen/schreiben, PRs), **`workflow`**
 (Actions-Workflows ändern/auslösen), **`read:org`** (Org-Repos auflisten). Ein fine-grained Token wäre feiner

@@ -153,7 +153,7 @@ spec:
                     )
                     [ -n "$VENV" ] || VENV=/opt/hermes/.venv
                     mkdir -p /opt/data/bin
-                    printf '#!/bin/sh\n# Erzeugt vom Init-Container install-extras (HelmRelease hermes) - nicht editieren.\n# Python der aktiven Hermes-Umgebung + Hermes-Module, fuer Skill-Skripte aus der Agenten-Shell.\nexport PYTHONPATH="/opt/hermes${PYTHONPATH:+:$PYTHONPATH}"\nexec "%s/bin/python" "$@"\n' "$VENV" > /opt/data/bin/python
+                    printf '#!/bin/sh\n# Erzeugt vom Init-Container install-extras (HelmRelease hermes) - nicht editieren.\n# Python der aktiven Hermes-Umgebung + Hermes-Module, fuer Skill-Skripte aus der Agenten-Shell.\nexport PYTHONPATH=/opt/hermes\nexec "%s/bin/python" "$@"\n' "$VENV" > /opt/data/bin/python
                     chmod 755 /opt/data/bin/python
                     ln -sf python /opt/data/bin/python3
                     echo "[install-extras] /opt/data/bin/python -> $VENV/bin/python"
@@ -164,19 +164,22 @@ spec:
                     echo "[install-extras] /opt/data/.bash_profile geschrieben"
                     # GitHub-CLI (nicht im Image): gepinnte Version nach /opt/data/bin/gh, nur wenn fehlend oder
                     # anders versioniert; SHA256 aus der Release-Checksummendatei. Version bei Bedarf hier bumpen.
+                    # Achtung: keine Dollar-Klammer-Schreibweise ($ gefolgt von geschweifter Klammer) in diesem Script – Flux' postBuild-envsubst wuerde sie
+                    # als Cluster-Variable auffassen (strict mode, "variable not set"). Nur $VAR bzw. "$VAR".
                     GH_VERSION=2.103.3
                     GH_SHA256=4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d
                     if ! /opt/data/bin/gh --version 2>/dev/null | grep -q "gh version $GH_VERSION "; then
-                      GH_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
+                      GH_DIR="gh_$GH_VERSION"_linux_amd64
+                      GH_URL="https://github.com/cli/cli/releases/download/v$GH_VERSION/$GH_DIR.tar.gz"
                       if curl -fsSL --retry 2 -o /tmp/gh.tgz "$GH_URL" \
                          && echo "$GH_SHA256  /tmp/gh.tgz" | sha256sum -c --quiet \
-                         && tar -xzf /tmp/gh.tgz -C /tmp "gh_${GH_VERSION}_linux_amd64/bin/gh" \
-                         && install -m 755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /opt/data/bin/gh; then
+                         && tar -xzf /tmp/gh.tgz -C /tmp "$GH_DIR/bin/gh" \
+                         && install -m 755 "/tmp/$GH_DIR/bin/gh" /opt/data/bin/gh; then
                         echo "[install-extras] gh $GH_VERSION installiert"
                       else
                         echo "[install-extras] WARNUNG: gh-Download fehlgeschlagen (Egress github.com/release-assets.githubusercontent.com?)"
                       fi
-                      rm -rf /tmp/gh.tgz "/tmp/gh_${GH_VERSION}_linux_amd64"
+                      rm -rf /tmp/gh.tgz "/tmp/$GH_DIR"
                     else
                       echo "[install-extras] gh $GH_VERSION vorhanden"
                     fi
@@ -184,11 +187,12 @@ spec:
                     # jedes Subprozesses (Tier-1-Secret). git und gh lesen den Token deshalb aus Dateien in HOME:
                     # ~/.git-credentials (credential.helper store) und ~/.config/gh/hosts.yml. Beides wird bei
                     # jedem Start aus dem Secret neu geschrieben bzw. ohne Token entfernt.
-                    if [ -n "${GITHUB_TOKEN:-}" ] && [ "${GITHUB_TOKEN}" != "REPLACE_ME" ]; then
+                    GH_TOKEN_VALUE=$(printenv GITHUB_TOKEN || true)
+                    if [ -n "$GH_TOKEN_VALUE" ] && [ "$GH_TOKEN_VALUE" != "REPLACE_ME" ]; then
                       umask 077
-                      printf 'https://x-access-token:%s@github.com\n' "$GITHUB_TOKEN" > /opt/data/.git-credentials
+                      printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN_VALUE" > /opt/data/.git-credentials
                       mkdir -p /opt/data/.config/gh
-                      printf 'github.com:\n    oauth_token: %s\n    git_protocol: https\n' "$GITHUB_TOKEN" > /opt/data/.config/gh/hosts.yml
+                      printf 'github.com:\n    oauth_token: %s\n    git_protocol: https\n' "$GH_TOKEN_VALUE" > /opt/data/.config/gh/hosts.yml
                       umask 022
                       echo "[install-extras] GitHub-Credentials fuer git und gh geschrieben"
                     else
