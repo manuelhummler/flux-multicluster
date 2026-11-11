@@ -240,6 +240,11 @@ spec:
         backend: local
       agent:
         gateway_timeout: 1800
+      # Websuche serverseitig bei OpenAI (Responses-API-Tool web_search ueber den Codex-Transport): kein
+      # API-Key, kein zusaetzlicher Egress (laeuft ueber chatgpt.com), Kosten im ChatGPT-Abo. Nur Suche;
+      # das Lesen ganzer Seiten (web_extract) braucht weiterhin einen Anbieter wie Firecrawl/Tavily. Doku 4e.
+      web:
+        search_backend: openai-native
       tools:
         # Nous-gehostete "Hosted Connectors" (Tool manage_connections, laeuft ueber das Nous-Portal) aus:
         # nicht genutzt, Egress dorthin ist zu, und der Agent griff sonst zu diesem Tool statt zum

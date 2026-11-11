@@ -470,6 +470,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | Sprachnachrichten | `stt.provider: local` (faster-whisper, Modell `small`, Sprache automatisch) | Self-hosted statt Cloud-STT (Groq/OpenAI bräuchten eigenen Key, OpenAI-STT läuft nicht über den Codex-Login). Node hat 16 Kerne/64 GB, Pod-Limit 2 Gi reicht für `small` (int8). |
 | config.yaml | `bootstrap.overwrite: true` – das Chart schreibt `config.yaml` bei jedem Start aus dem HelmRelease neu | Git ist die Wahrheit; Laufzeit-Änderungen (z. B. `/model` im Chat) überleben keinen Pod-Neustart. Dauerhafte Änderungen gehören ins HelmRelease. |
 | Python-Extras | Init-Container `install-extras` (Kopie von seed-config per postRenderer) führt bei jedem Start `hermes pm install --extra google --extra stt-whisper` aus und legt `/opt/data/bin/python` an | Deklarativ statt Handarbeit im Pod; nach Volume-Verlust baut es sich selbst wieder auf. Der Wrapper gibt Skill-Skripten in der Agenten-Shell das Hermes-Python (sonst System-Python ohne Bibliotheken). |
+| Websuche | `config.web.search_backend: openai-native`: OpenAIs serverseitiges `web_search`-Tool über den Codex-Transport, kein API-Key, kein neuer Egress | Entscheidung 2026-11-11. Deckt nur die Suche ab (Treffer mit Snippets); das Lesen kompletter Seiten (`web_extract`) bleibt ohne Anbieter, dafür später Firecrawl oder Tavily (ein Egress-Host, API-Key in `hermes-secrets`). |
 | GitHub | Personal Access Token (classic, Scopes `repo`, `workflow`, `read:org`) als `GITHUB_TOKEN` in `hermes-secrets`; der Init-Container `install-extras` installiert die `gh`-CLI (gepinnt, SHA256-geprüft) nach `/opt/data/bin` und schreibt `~/.git-credentials` und `~/.config/gh/hosts.yml` | Entscheidung 2026-11-11. Classic statt fine-grained, weil nur der classic Token *alle* Repos abdeckt, auf die das Konto Zugriff hat (fremde Konten, Orgs ohne Fine-grained-Freigabe). Hermes streicht `GITHUB_TOKEN` absichtlich aus jedem Subprozess, daher der Umweg über Dateien. |
 | GitLab | Zweigleisig: offizieller Remote-MCP `https://gitlab.com/api/v4/mcp` (Katalog-Eintrag, OAuth über das Dashboard) für Issues, Merge Requests, Pipelines; dazu `GITLAB_TOKEN` (PAT, nur `read_repository`/`write_repository`) in `hermes-secrets` für git über HTTPS, vom Init-Container in `~/.git-credentials` eingetragen | Entscheidung 2026-11-11. Es gibt kein gebündeltes GitLab-Skill und keine `glab`-CLI im Image; der MCP ersetzt die API-Seite, der PAT bleibt auf Repo-Inhalte beschränkt. |
 | Todoist | Offizieller Remote-MCP-Server `https://ai.todoist.net/mcp` aus dem Hermes-Katalog, deklarativ als `config.mcp_servers.todoist` im HelmRelease; OAuth 2.1 mit Dynamic Client Registration, Einwilligung einmalig über das Dashboard, Token auf dem Volume | Entscheidung 2026-11-11. Kein API-Token in Git/SOPS nötig, kein lokaler MCP-Prozess im Pod (nur HTTP). Scope `data:read_write` (Aufgaben, Projekte, Kommentare lesen und schreiben). |
@@ -687,6 +688,26 @@ Einstellungen → Integrationen den Zugriff widerrufen.
 **Fallback ohne Dashboard:** `kubectl … exec -it … -- sh -c 'HOME=/opt/data hermes mcp login todoist'` druckt die
 Autorisierungs-URL; der Redirect auf `127.0.0.1:<port>` schlägt im Browser fehl, die komplette Adresszeile dann in
 die Eingabeaufforderung einfügen (Paste-Fallback). Egress wie beim Dashboard-Weg.
+
+### Web-Recherche
+
+Hermes wählt den Suchanbieter über `web.search_backend` (bzw. `web.backend` für Suche und Extraktion gemeinsam).
+Ohne Konfiguration tastet es sich durch eine Kaskade aus API-Keys (`TAVILY_API_KEY`, `PERPLEXITY_API_KEY`,
+`EXA_API_KEY`, `PARALLEL_API_KEY`, `KEENABLE_API_KEY`, `FIRECRAWL_API_KEY`, `SEARXNG_URL`, `BRAVE_SEARCH_API_KEY`) und
+landet sonst bei Firecrawl, das ohne Key nicht funktioniert – so stand der Agent bis 2026-11-11 ohne Websuche da.
+
+**Gewählt: `openai-native`.** Das Plugin `plugins/web/openai_native` führt selbst keine Suche aus, sondern lässt den
+Codex-Transport OpenAIs serverseitiges `web_search`-Tool deklarieren; das Modell sucht dann bei OpenAI. Braucht
+nur den bestehenden Codex-Login, keinen Key, keinen weiteren Egress (alles über `chatgpt.com`). Grenzen: nur Suche,
+keine Extraktion ganzer Seiten (`web_extract` meldet „kein Provider“); Inhalte der Suche laufen über OpenAI wie
+alles andere auch.
+
+**Ausbau (optional):** Für `web_extract` einen gehosteten Anbieter ergänzen, bevorzugt Tavily (Suche + Extraktion,
+kostenloses Kontingent monatlich) oder Firecrawl: Key als `TAVILY_API_KEY` bzw. `FIRECRAWL_API_KEY` in
+`hermes-secrets`, `web.extract_backend: tavily|firecrawl` im HelmRelease, Egress `api.tavily.com` bzw.
+`api.firecrawl.dev` (443). Die Suche kann dabei bei `openai-native` bleiben.
+
+**Prüfen:** `hermes chat -q "Suche im Web: Wann ist der nächste Hessische Ehrenamtskongress? Nenne Datum und Quelle."`
 
 ### GitHub (Repos, PRs, Issues, CI)
 
