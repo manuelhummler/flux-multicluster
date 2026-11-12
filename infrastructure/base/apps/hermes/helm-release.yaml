@@ -157,9 +157,12 @@ spec:
                     chmod 755 /opt/data/bin/python
                     ln -sf python /opt/data/bin/python3
                     echo "[install-extras] /opt/data/bin/python -> $VENV/bin/python"
-                    # Das Terminal-Tool startet "bash -lic": Debians /etc/profile setzt dabei den PATH auf den
-                    # Standard zurueck (ohne /opt/data/bin und /opt/hermes/bin). ~/.bash_profile wird danach
-                    # gelesen und stellt beides voran. HOME des Hermes-Users ist /opt/data.
+                    # Das Terminal-Tool sourct vor jedem Befehl ~/.profile, ~/.bash_profile, ~/.bashrc des
+                    # Hermes-Prozesses (HOME=/opt/data, terminal.auto_source_bashrc); Debians /etc/profile hat
+                    # den PATH davor auf den Standard zurueckgesetzt (ohne /opt/data/bin und /opt/hermes/bin).
+                    # Achtung: HOME *in* der Agenten-Shell ist /opt/data/home (Hermes' "profile home" im
+                    # Container, hermes_constants.get_subprocess_home) - HOME-relative Dateien fuer git/gh/npm
+                    # gehoeren dorthin, siehe AGENT_HOME unten.
                     printf '# Erzeugt vom Init-Container install-extras (HelmRelease hermes) - nicht editieren.\n# Login-Shell des Terminal-Tools: Hermes-Python-Wrapper und hermes-CLI vor den Systempfaden.\nexport PATH="/opt/data/bin:/opt/hermes/bin:$PATH"\n[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"\n' > /opt/data/.bash_profile
                     echo "[install-extras] /opt/data/.bash_profile geschrieben"
                     # GitHub-CLI (nicht im Image): gepinnte Version nach /opt/data/bin/gh, nur wenn fehlend oder
@@ -185,33 +188,38 @@ spec:
                     fi
                     # GitHub-Zugang fuer die Agenten-Shell: Hermes entfernt GITHUB_TOKEN bewusst aus der Umgebung
                     # jedes Subprozesses (Tier-1-Secret). git und gh lesen den Token deshalb aus Dateien in HOME:
-                    # ~/.git-credentials (credential.helper store) und ~/.config/gh/hosts.yml. Beides wird bei
-                    # jedem Start aus dem Secret neu geschrieben bzw. ohne Token entfernt.
+                    # ~/.git-credentials (credential.helper store) und ~/.config/gh/hosts.yml. HOME der
+                    # Agenten-Shell ist /opt/data/home (nicht /opt/data, siehe oben). Alles wird bei jedem Start
+                    # aus dem Secret neu geschrieben bzw. ohne Token entfernt.
+                    AGENT_HOME=/opt/data/home
+                    mkdir -p "$AGENT_HOME"
+                    # Altlasten vom ersten Aufbau (bis 2026-11-12 lagen die Dateien unter /opt/data)
+                    rm -f /opt/data/.git-credentials /opt/data/.gitconfig /opt/data/.config/gh/hosts.yml
                     umask 077
-                    : > /opt/data/.git-credentials
+                    : > "$AGENT_HOME/.git-credentials"
                     GH_TOKEN_VALUE=$(printenv GITHUB_TOKEN || true)
                     if [ -n "$GH_TOKEN_VALUE" ] && [ "$GH_TOKEN_VALUE" != "REPLACE_ME" ]; then
-                      printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN_VALUE" >> /opt/data/.git-credentials
-                      mkdir -p /opt/data/.config/gh
-                      printf 'github.com:\n    oauth_token: %s\n    git_protocol: https\n' "$GH_TOKEN_VALUE" > /opt/data/.config/gh/hosts.yml
-                      echo "[install-extras] GitHub-Credentials fuer git und gh geschrieben"
+                      printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN_VALUE" >> "$AGENT_HOME/.git-credentials"
+                      mkdir -p "$AGENT_HOME/.config/gh"
+                      printf 'github.com:\n    oauth_token: %s\n    git_protocol: https\n' "$GH_TOKEN_VALUE" > "$AGENT_HOME/.config/gh/hosts.yml"
+                      echo "[install-extras] GitHub-Credentials fuer git und gh geschrieben ($AGENT_HOME)"
                     else
-                      rm -f /opt/data/.config/gh/hosts.yml
+                      rm -f "$AGENT_HOME/.config/gh/hosts.yml"
                       echo "[install-extras] GITHUB_TOKEN nicht gesetzt: kein GitHub-Zugang in der Agenten-Shell"
                     fi
                     # GitLab (gitlab.com): Personal Access Token fuer git ueber HTTPS; Benutzername bei GitLab-PATs ist "oauth2".
                     GL_TOKEN_VALUE=$(printenv GITLAB_TOKEN || true)
                     if [ -n "$GL_TOKEN_VALUE" ] && [ "$GL_TOKEN_VALUE" != "REPLACE_ME" ]; then
-                      printf 'https://oauth2:%s@gitlab.com\n' "$GL_TOKEN_VALUE" >> /opt/data/.git-credentials
-                      echo "[install-extras] GitLab-Credentials fuer git geschrieben"
+                      printf 'https://oauth2:%s@gitlab.com\n' "$GL_TOKEN_VALUE" >> "$AGENT_HOME/.git-credentials"
+                      echo "[install-extras] GitLab-Credentials fuer git geschrieben ($AGENT_HOME)"
                     else
                       echo "[install-extras] GITLAB_TOKEN nicht gesetzt: kein GitLab-Git-Zugang in der Agenten-Shell"
                     fi
-                    [ -s /opt/data/.git-credentials ] || rm -f /opt/data/.git-credentials
+                    [ -s "$AGENT_HOME/.git-credentials" ] || rm -f "$AGENT_HOME/.git-credentials"
                     umask 022
                     # Git-Identitaet und Credential-Helper; Commits des Agenten sind am Namen erkennbar.
-                    printf '# Erzeugt vom Init-Container install-extras (HelmRelease hermes) - nicht editieren.\n[user]\n\tname = Hermes Agent\n\temail = manuel@hummler.com\n[credential]\n\thelper = store\n[init]\n\tdefaultBranch = main\n' > /opt/data/.gitconfig
-                    echo "[install-extras] /opt/data/.gitconfig geschrieben"
+                    printf '# Erzeugt vom Init-Container install-extras (HelmRelease hermes) - nicht editieren.\n[user]\n\tname = Hermes Agent\n\temail = manuel@hummler.com\n[credential]\n\thelper = store\n[init]\n\tdefaultBranch = main\n' > "$AGENT_HOME/.gitconfig"
+                    echo "[install-extras] $AGENT_HOME/.gitconfig geschrieben"
   values:
     # Ressourcen heissen damit schlicht "hermes" (Deployment, Service, ServiceAccount, PVC);
     # darauf verlassen sich die CiliumNetworkPolicies (io.cilium.k8s.policy.serviceaccount: hermes).

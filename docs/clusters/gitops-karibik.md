@@ -721,8 +721,8 @@ Agenten-Shell. Deshalb erledigt der Init-Container `install-extras` beides dekla
   wenn die Datei fehlt oder eine andere Version hat. Bump von Hand: neue Version und Checksumme aus
   `gh_<version>_checksums.txt` des Releases eintragen (Renovate kennt diesen Pin nicht).
 - Aus `GITHUB_TOKEN` die Dateien `~/.git-credentials` (git, `credential.helper store`) und
-  `~/.config/gh/hosts.yml` (gh) in `/opt/data`, Modus 0600; ohne Token werden sie entfernt. Dazu `~/.gitconfig`
-  mit Identität `Hermes Agent <manuel@hummler.com>`, so sind Commits des Agenten am Namen erkennbar.
+  `~/.config/gh/hosts.yml` (gh) in **`/opt/data/home`**, Modus 0600; ohne Token werden sie entfernt. Dazu
+  `~/.gitconfig` mit Identität `Hermes Agent <manuel@hummler.com>`, so sind Commits des Agenten am Namen erkennbar.
 - Egress-Policy `allow-egress-to-github` (Hosts siehe Entscheidungstabelle).
 
 **Stolperstein beim ersten Rollout (2026-11-11):** Die Flux-Kustomization `hermes` läuft mit `postBuild.substituteFrom`
@@ -730,6 +730,16 @@ Agenten-Shell. Deshalb erledigt der Init-Container `install-extras` beides dekla
 gelesen: unbekannte brechen den Build ab („variable not set: GH_VERSION“, die alte Version bleibt stehen), Formen
 wie `${PYTHONPATH:+…}` werden still verstümmelt (so war der Python-Wrapper mit `:$PYTHONPATH` gelandet). In
 Scripten deshalb nur `$VAR` / `"$VAR"` und `printenv`, nie `${VAR}`.
+
+**Stolperstein zwei (2026-11-12): HOME der Agenten-Shell ist `/opt/data/home`.** Hermes gibt Subprozessen im
+Container nicht sein eigenes HOME (`/opt/data`, dort liegen `config.yaml`, Memory, Sessions), sondern ein
+abgetrenntes „profile home“ `$HERMES_HOME/home` (`hermes_constants.get_subprocess_home`, Modus `auto`; mit
+`TERMINAL_HOME_MODE=real` ließe sich das abschalten, wir folgen dem Standard). Die Shell-Init-Dateien
+(`~/.bash_profile` usw.) sourct das Terminal-Tool dagegen aus `/opt/data`, deshalb stimmt der PATH, aber alles
+HOME-relative (`.git-credentials`, `.gitconfig`, `.config/gh/`, `.npm`) muss nach `/opt/data/home`. Der erste
+Aufbau hatte die Dateien unter `/opt/data` abgelegt; `git ls-remote` per `kubectl exec … HOME=/opt/data` sah
+deshalb grün aus, während der Agent selbst „nicht angemeldet“ meldete. Beim Prüfen im Pod immer
+`HOME=/opt/data/home` setzen oder gleich den Agenten fragen (siehe unten).
 
 **Token anlegen (einmalig, GitHub-Seite):** <https://github.com/settings/tokens> → „Generate new token (classic)“,
 Name `hermes-karibik`, Ablauf z. B. 90 Tage, Scopes **`repo`** (alle Repos lesen/schreiben, PRs), **`workflow`**
@@ -778,7 +788,7 @@ Mitglied ist (eigene, Gruppen wie `hummler-gbr`, Einladungen).
 `GITLAB_TOKEN=glpat-...`, pushen, Reconcile, `rollout restart`).
 
 **Prüfen:** Init-Log „GitLab-Credentials für git geschrieben“, dann im Pod
-`bash -lc 'git ls-remote --heads https://gitlab.com/hummler-gbr/pro-makler.git | head -2'`; MCP-Seite im Chat:
+`sh -c 'HOME=/opt/data/home git ls-remote --heads https://gitlab.com/hummler-gbr/pro-makler.git | head -2'`; MCP-Seite im Chat:
 „Liste die offenen Merge Requests in hummler-gbr/pro-makler.“
 
 ### Egress erweitern (Rezept)
