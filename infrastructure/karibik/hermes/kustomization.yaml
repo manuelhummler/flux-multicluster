@@ -39,3 +39,8 @@ secretGenerator:
   - name: hermes-secrets
     envs:
       - hermes-env-encrypted.env
+  # Bearer-Key der Hindsight-API (Doku 4g): dieselbe SOPS-Datei wie im Hindsight-Overlay, wird HINDSIGHT_API_KEY
+  # im Pod (extraEnvFrom). Getrennt von hermes-env, damit der Key nur an einer Stelle gepflegt wird.
+  - name: hermes-hindsight
+    envs:
+      - ../hindsight/hindsight-api-key-encrypted.env

@@ -1,0 +1,119 @@
+# Cilium-Policies fuer Hindsight. Grundlage: default-deny aus base/ciliumNetworkPolicy (alles zu ausser DNS).
+# Beide Pods (api, control-plane) teilen den ServiceAccount "hindsight" des Charts; unterschieden wird
+# ueber das Chart-Label app.kubernetes.io/component. Rezept wie bei Hermes (Doku 4e "Egress erweitern").
+
+# Daten-API (8888): nur Hermes (Memory-Provider-Plugin) und die eigene Control Plane. Kein Ingress von aussen.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-ingress-to-api
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.cilium.k8s.policy.serviceaccount: hermes
+            io.kubernetes.pod.namespace: hermes
+        - matchLabels:
+            app.kubernetes.io/component: control-plane
+      toPorts:
+        - ports:
+            - port: "8888"
+---
+# Traefik -> Control-Plane-UI (HTTP, TLS endet bei Traefik)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-ingress-to-control-plane-from-traefik
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/component: control-plane
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.cilium.k8s.policy.serviceaccount: traefik
+            io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports:
+            - port: "3000"
+---
+# Control Plane -> Daten-API (serverseitig, Next.js-Handler)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-control-plane-to-api
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/component: control-plane
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/component: api
+      toPorts:
+        - ports:
+            - port: "8888"
+---
+# API -> Postgres im CNPG-Cluster (Service postgres-cluster-rw, Namespace cnpg-cluster)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-api-to-postgres
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.cilium.k8s.policy.serviceaccount: postgres-cluster
+            io.kubernetes.pod.namespace: cnpg-cluster
+      toPorts:
+        - ports:
+            - port: "5432"
+---
+# API -> Hugging Face: Embedder und Reranker werden beim ersten Start geladen (Modell-Cache-Volume).
+# Dieselben Hosts/Pattern wie bei der Hermes-Transkription (CDN unter hf.co bis drei Labels tief).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-api-to-huggingface
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  egress:
+    - toFQDNs:
+        - matchName: huggingface.co
+        - matchPattern: "*.huggingface.co"
+        - matchName: hf.co
+        - matchPattern: "*.hf.co"
+        - matchPattern: "*.*.hf.co"
+        - matchPattern: "*.*.*.hf.co"
+      toPorts:
+        - ports:
+            - port: "443"
+---
+# API -> OpenAI (Provider chatgpt, "Sign in with ChatGPT"):
+#   api.openai.com   Inference /v1/responses mit dem OAuth-Token des Abos
+#   auth.openai.com  Login (Callback-Flow) und Token-Refresh
+#   chatgpt.com      Plan-Nutzungs-Einwilligung/Usage-Seiten des Flows
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-api-to-openai
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  egress:
+    - toFQDNs:
+        - matchName: api.openai.com
+        - matchName: auth.openai.com
+        - matchName: chatgpt.com
+      toPorts:
+        - ports:
+            - port: "443"

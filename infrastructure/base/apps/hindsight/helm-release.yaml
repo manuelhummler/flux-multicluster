@@ -1,0 +1,172 @@
+# Hindsight (vectorize-io) – Langzeit-Memory des Hermes Agent: Fakten, Entitaeten und Zeitbezuege als
+# Wissensgraph, Recall ueber Vektor-, Stichwort-, Graph- und Zeitsuche, Control-Plane-UI zum Durchsehen.
+# Siehe docs/clusters/gitops-karibik.md, Abschnitt 4g. Laeuft nur auf karibik.
+# Komponenten aus dem Chart: api (Deployment, Port 8888, interner Worker) und control-plane (Next.js,
+# Port 3000). Postgres kommt NICHT aus dem Chart, sondern aus dem CNPG-Cluster (Rolle/DB "hindsight").
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: hindsight
+spec:
+  interval: 10m0s
+  # API-Image ~9 GB (Torch, lokale Embeddings/Reranker), dazu Modell-Download beim ersten Start
+  timeout: 20m0s
+  chart:
+    spec:
+      chart: hindsight
+      version: 1.2.1
+      sourceRef:
+        kind: HelmRepository
+        name: hindsight
+      interval: 1h0m0s
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  # Geheimnisse aus den Overlay-Secrets (SOPS) in die Chart-Values; das Chart rendert daraus sein eigenes
+  # Secret (hindsight-secret) und reicht die Werte als Umgebungsvariablen an api und control-plane.
+  valuesFrom:
+    # DB-Passwort der CNPG-Rolle (dieselbe SOPS-Datei wie im CNPG-Overlay, Keys username/password)
+    - kind: Secret
+      name: hindsight-db
+      valuesKey: password
+      targetPath: postgresql.external.password
+    # Ein gemeinsamer Bearer-Key fuer die Daten-API (/v1): der Server prueft ihn, die Control Plane und
+    # Hermes (Secret hermes-hindsight im Namespace hermes, gleiche Datei) schicken ihn mit.
+    - kind: Secret
+      name: hindsight-api-key
+      valuesKey: HINDSIGHT_API_KEY
+      targetPath: api.secrets.HINDSIGHT_API_TENANT_API_KEY
+    - kind: Secret
+      name: hindsight-api-key
+      valuesKey: HINDSIGHT_API_KEY
+      targetPath: controlPlane.secrets.HINDSIGHT_CP_DATAPLANE_API_KEY
+    # Login-Schluessel der Control-Plane-UI (oauth2-proxy gibt es auf karibik noch nicht, Keycloak-Cutover offen)
+    - kind: Secret
+      name: hindsight-cp
+      valuesKey: HINDSIGHT_CP_ACCESS_KEY
+      targetPath: controlPlane.secrets.HINDSIGHT_CP_ACCESS_KEY
+  values:
+    fullnameOverride: hindsight
+
+    api:
+      replicaCount: 1
+      # kein Kubernetes-API-Zugriff noetig
+      automountServiceAccountToken: false
+      # eine Replik mit RWO-Volume: nie zwei Pods gleichzeitig
+      strategy:
+        type: Recreate
+      resources:
+        requests:
+          cpu: 500m
+          # Doku: Vollbild mindestens 1,5 GB (Embedder + Reranker im Prozess), 2 GB empfohlen
+          memory: 2Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
+      # Erster Start laedt die Modelle von Hugging Face (dauert Minuten); Liveness/Readiness warten solange.
+      startupProbe:
+        httpGet:
+          path: /health/live
+          port: 8888
+        periodSeconds: 10
+        failureThreshold: 90
+      # Modell-Cache (/home/hindsight/.cache) auf einem Volume, sonst Download bei jedem Neustart. Dasselbe
+      # Volume traegt per subPath /home/hindsight/.hindsight mit den ChatGPT-Credentials (Token-Rotation
+      # schreibt dorthin) – daher "keep": ein helm uninstall darf den Login nicht mitnehmen.
+      persistence:
+        modelCache:
+          enabled: true
+          size: 5Gi
+          # 1 Replik, keine Backup-Gruppe (StorageClass aus dem Hermes-Overlay): alles darauf ist reproduzierbar
+          # bis auf den ChatGPT-Login, der sich in Minuten wiederholen laesst.
+          storageClass: longhorn-cache
+          annotations:
+            helm.sh/resource-policy: keep
+      extraVolumeMounts:
+        - name: model-cache
+          mountPath: /home/hindsight/.hindsight
+          subPath: hindsight-home
+      env:
+        # LLM fuer retain/reflect (Fakten-Extraktion, Antwort-Synthese): "Sign in with ChatGPT" gegen
+        # api.openai.com/v1/responses mit OAuth-Token des ChatGPT-Abos – kein API-Key, Login einmalig per
+        # hindsight-admin (Doku 4g, Schritt 3). Credentials unter ~/.hindsight/chatgpt (siehe Volume oben).
+        # Vorbehalt wie bei Hermes: laut OpenAI nur fuer persoenliche Nutzung, 5-Stunden-Limit geteilt.
+        HINDSIGHT_API_LLM_PROVIDER: chatgpt
+        HINDSIGHT_API_LLM_MODEL: gpt-6-luna
+        # Fakten-Extraktion braucht kein tiefes Reasoning; schont das geteilte Limit
+        HINDSIGHT_API_LLM_REASONING_EFFORT: low
+        # Embeddings und Reranker lokal auf CPU, mehrsprachig (die Chart-Defaults bge-small-en/hs-rerank-1
+        # sind englisch bzw. ohne Angabe zu Deutsch). Beides sind die Modelle aus Hindsights eigenem
+        # Mehrsprachen-Beispiel (docker/docker-compose/custom-models). Embedder spaeter wechseln =
+        # hindsight-admin reembed (gleiche Dimension reicht nicht).
+        HINDSIGHT_API_EMBEDDINGS_PROVIDER: local
+        HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+        HINDSIGHT_API_RERANKER_PROVIDER: local
+        HINDSIGHT_API_RERANKER_LOCAL_MODEL: cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
+        # Modell-Download beim ersten Start darf laenger als die 300 s Default dauern
+        HINDSIGHT_API_MODEL_INIT_TIMEOUT: "900"
+        # Hugging Face klassisch ueber *.huggingface.co / *.hf.co statt Xet-Storage (Egress-Policy)
+        HF_HUB_DISABLE_XET: "1"
+        # Daten-API nur mit Bearer-Key (Wert ueber valuesFrom in api.secrets)
+        HINDSIGHT_API_TENANT_EXTENSION: hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension
+
+    worker:
+      enabled: false
+
+    controlPlane:
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+
+    # Postgres aus dem CNPG-Cluster (Rolle + Database "hindsight" in infrastructure/karibik/cloudnative-pg-cluster)
+    postgresql:
+      enabled: false
+      external:
+        host: postgres-cluster-rw.cnpg-cluster.svc.cluster.local
+        port: 5432
+        database: hindsight
+        username: hindsight
+
+    # Nur die Control-Plane-UI nach aussen (sie spricht die Daten-API intern an). Die API selbst (/v1)
+    # bewusst NICHT ueber den Ingress: Zugriff nur aus dem Cluster (Cilium) mit Bearer-Key.
+    ingress:
+      enabled: true
+      className: traefik
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-prod
+      hosts:
+        - host: ${HINDSIGHT_DOMAIN}
+          paths:
+            - path: /
+              pathType: Prefix
+              service: controlPlane
+      tls:
+        - secretName: hindsight-tls
+          hosts:
+            - ${HINDSIGHT_DOMAIN}
+
+    # Pod Security "restricted": das Chart bringt non-root (UID 1000), drop ALL und no-privilege-escalation
+    # mit; seccomp fehlt und kommt hier dazu. Rootfs bleibt beschreibbar (Next.js/Python schreiben Caches).
+    podSecurityContext:
+      runAsNonRoot: true
+      fsGroup: 1000
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: false
+      capabilities:
+        drop:
+          - ALL
+      seccompProfile:
+        type: RuntimeDefault

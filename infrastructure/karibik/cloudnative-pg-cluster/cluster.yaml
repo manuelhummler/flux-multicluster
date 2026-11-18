@@ -59,6 +59,14 @@ spec:
         comment: pro-makler keycloak instance user
         passwordSecret:
           name: promakler-keycloak-secret
+      # Hindsight (Langzeit-Memory des Hermes Agent, Doku 4g): Postgres mit pgvector. Die Extension
+      # "vector" ist nicht "trusted" und wird einmalig als Superuser angelegt (Rezept in der Doku) –
+      # die Database-CRD des Operators 1.25 kennt spec.extensions noch nicht.
+      - name: hindsight
+        login: true
+        comment: hindsight (hermes memory) user
+        passwordSecret:
+          name: hindsight-secret
   backup:
     retentionPolicy: "30d"
     barmanObjectStore:

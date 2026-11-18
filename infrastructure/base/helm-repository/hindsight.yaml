@@ -1,0 +1,11 @@
+# Offizielles Hindsight-Chart (vectorize-io/hindsight) als OCI: oci://ghcr.io/vectorize-io/charts/hindsight.
+# Renovate bumpt die Chart-Version im HelmRelease (Flux-Manager); die Images haengen an der appVersion.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: hindsight
+  namespace: flux-system
+spec:
+  interval: 1h0m0s
+  type: oci
+  url: oci://ghcr.io/vectorize-io/charts

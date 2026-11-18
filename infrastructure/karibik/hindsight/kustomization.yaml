@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Hindsight (Langzeit-Memory des Hermes Agent) auf karibik, siehe docs/clusters/gitops-karibik.md, Abschnitt 4g.
+namespace: hindsight
+resources:
+  - ../../base/apps/hindsight
+generatorOptions:
+  disableNameSuffixHash: true
+secretGenerator:
+  # DB-Zugang: dieselbe SOPS-Datei wie die CNPG-Rolle (username/password) – Rezept aus Phase 1.
+  # Das HelmRelease liest "password" per valuesFrom.
+  - name: hindsight-db
+    type: kubernetes.io/basic-auth
+    envs:
+      - ../cloudnative-pg-cluster/secrets/hindsight-encrypted.env
+  # Bearer-Key der Daten-API; dieselbe Datei bindet das Hermes-Overlay als Secret hermes-hindsight ein
+  # (Umgebungsvariable HINDSIGHT_API_KEY fuer das Plugin).
+  - name: hindsight-api-key
+    envs:
+      - hindsight-api-key-encrypted.env
+  # Login-Schluessel der Control-Plane-UI (Zufallswert; nachsehen mit sops -d)
+  - name: hindsight-cp
+    envs:
+      - hindsight-cp-encrypted.env

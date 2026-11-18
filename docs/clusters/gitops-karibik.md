@@ -479,6 +479,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | SharePoint/OneDrive | **Spiegel im Cluster** statt API-Zugriff: drei Sidecars `onedrive` (OneDrive des Kontos), `office` (Site `office`, Bibliothek „Dokumente“) und `familie` (Site `familie`, Bibliothek „Dokumente“) mit [abraunegg/onedrive](https://github.com/abraunegg/onedrive) (Image `driveone/onedrive:2.5.12-alpine`) im Hermes-Pod, Monitor-Modus in beide Richtungen, gemeinsame PVC `hermes-m365` (StorageClass `longhorn-cache`: 1 Replik, Recurring-Job-Gruppe `no-backup`), Hermes sieht die Dateien unter `/opt/onedrive`, `/opt/sharepoint/office` und `/opt/sharepoint/familie`. Login je Sidecar per Device-Code-Flow gegen die **eigene Entra-App** `hermes-onedrive` (Public Client), Konfiguration als ConfigMap `m365-sync` im Overlay | Entscheidung 2026-11-18. Hermes arbeitet mit lokalen Dateien (grep, Python, pandoc) deutlich besser als über Graph-Tool-Calls; der Client verhält sich wie der Desktop-OneDrive (inotify-Upload, Deltas alle 5 min). Kein Composio: Geschäftsdokumente nicht durch einen Zwischenhändler. Kein `rclone mount` (FUSE unter PSS `restricted` unmöglich), kein `rclone bisync` (Aufsatz statt Client). Keine zusätzliche Sicherung: OneDrive wird bereits gesichert, der Spiegel baut sich neu auf. Kein Löschschutz möglich (`no_remote_delete` gibt es nur upload-only) – Papierkorb in SharePoint ist das Netz. |
 | Microsoft Graph | Eigenes Skill `m365-graph` (Python mit MSAL und requests aus der Hermes-Umgebung, kein MCP, kein Node) gegen eine **zweite Entra-App `hermes-graph`** mit delegierten Rechten `Files.Read.All`, `Sites.Read.All`, `Mail.ReadWrite`, `Calendars.ReadWrite`, `User.Read`, `offline_access` – bewusst **ohne `Mail.Send`** und ohne Datei-Schreibrechte. Skill-Dateien als ConfigMap im Overlay, `install-extras` kopiert sie nach `skills/productivity/m365-graph/` | Entscheidung 2026-11-18. Ergänzt den Spiegel um das, was dort nicht liegt (750 GB OneDrive, Metadaten, Versionen) und um Outlook. Prinzip „Graph liest, der Spiegel schreibt“: ein Graph-Token mit `Files.ReadWrite.All` gäbe dem Agenten Löschzugriff auf das gesamte OneDrive. Mail: Entwürfe ja, Senden nein (Graph trennt das sauber über `Mail.Send`); `Mail.ReadWrite` erlaubt technisch auch Löschen/Verschieben – Grenze ist das Recht, nicht das Skript. Kalender schreibend auf Wunsch. Kein neuer Egress (`login.microsoftonline.com`, `graph.microsoft.com` sind für die Sidecars offen). |
 | Google Workspace | Skill `google-workspace` mit eigenem OAuth-Desktop-Client; Client-Secret als SOPS-Secret auf `/opt/data/google_client_secret.json` gemountet, Token `google_token.json` auf dem Volume | Entscheidung 2026-11-11. Volle Scopes (Gmail senden/ändern, Drive, Calendar, Sheets, Docs, Contacts) – Inhalte gehen beim Verarbeiten an OpenAI. Nur-Mail-Alternative wäre das `himalaya`-Skill mit App-Passwort. |
+| Langzeit-Memory | **Hindsight** (self-hosted, Namespace `hindsight`) als Memory-Provider-Plugin; eingebautes Memory bleibt aktiv – siehe **4g** | Entscheidung 2026-11-18 nach Vergleich mit Honcho (Persönlichkeitsmodell, Cloud oder bezahlter API-Key), hwiki (Markdown, kein LLM) und den gehosteten Anbietern: Fakten-/Entitäts-Graph mit zeitlicher Suche passt zu einem Assistenten für Projekte, Server und Termine; ChatGPT-Abo nutzbar, offene UI, alles im Cluster. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
 
 ### Aufbau
@@ -1259,6 +1260,150 @@ Repository access erweitern). Ein Repo ohne Renovate-Config bekommt zuerst einen
   pushen, Lauf manuell starten.
 - **Job läuft länger als 50 Minuten**: `activeDeadlineSeconds: 3000` bricht ab, `concurrencyPolicy: Forbid`
   verhindert parallele Läufe derselben Instanz.
+
+## 4g. Hindsight – Langzeit-Memory für Hermes (eingerichtet 2026-11-18)
+
+[Hindsight](https://github.com/vectorize-io/hindsight) (Vectorize, MIT) ist ein Memory-System für Agenten:
+`retain` zieht mit einem LLM Fakten, Entitäten und Zeitbezüge aus jedem Gesprächs-Turn, `recall` sucht
+parallel über Vektoren, Stichwörter (BM25), Entitäts-Graph und Zeit und rerankt die Treffer, `reflect`
+beantwortet Fragen mit Zitaten aus dem Gedächtnis. Hermes bindet es als **Memory-Provider-Plugin** an
+(Auto-Recall vor jedem Turn, Auto-Retain danach, dazu die Tools `hindsight_recall`, `hindsight_retain`,
+`hindsight_reflect`). Das eingebaute Hermes-Memory (`MEMORY.md`/`USER.md`) bleibt zusätzlich aktiv.
+Die **Control-Plane-UI** unter `https://hindsight.hummler.com` zeigt Banks, Fakten und Entitäten und
+erlaubt Testabfragen. Alles läuft im Cluster, nichts geht an Vectorize.
+
+Vorher kurz ausprobiert und wieder verworfen: **Honcho** (Plugin am 2026-11-18 installiert, nie konfiguriert,
+gleichentags entfernt). Honcho modelliert eine Person (Repräsentation, dialektisches Nachfragen) statt
+Fakten und braucht entweder Honcho Cloud (Daten bei Plastic Labs) oder self-hosted einen bezahlten
+OpenAI-API-Key für den Deriver; Hindsight kann das Abo per „Sign in with ChatGPT“ nutzen und bringt eine
+offene UI mit.
+
+### Entscheidungen (2026-11-18)
+
+| Thema | Entscheidung | Begründung |
+| ----- | ------------ | ---------- |
+| Betrieb | **Self-hosted** im Namespace `hindsight`: offizielles Chart `oci://ghcr.io/vectorize-io/charts/hindsight` `1.2.1` (Images `ghcr.io/vectorize-io/hindsight-api` und `-control-plane`, Tag = appVersion), Modus `local_external` im Hermes-Plugin | Hindsight Cloud wäre bequemer (Dashboard, Credits), aber jeder Hermes-Turn und jeder Memory-Eintrag ginge an Vectorize. Kein eingebetteter Daemon im Hermes-Pod (`local_embedded` bräuchte dort Torch, Postgres und 2 GB RAM extra). |
+| Datenbank | Rolle + Database `hindsight` im **CNPG-Cluster** (Phase 1), pgvector 0.8 ist im CNPG-Image; Chart-Postgres (`ankane/pgvector`) aus | Backup und Failover kommen gratis mit (Barman nach DigitalOcean). Haken: `vector` ist nicht „trusted“ – die Extension muss einmalig als Superuser angelegt werden, die `Database`-CRD des Operators 1.25 kennt `spec.extensions` noch nicht (ab 1.26). |
+| LLM für retain/reflect | Provider `chatgpt` („Sign in with ChatGPT“, OAuth-Token des ChatGPT-Abos gegen `api.openai.com/v1/responses`), Modell `gpt-6-luna`, `HINDSIGHT_API_LLM_REASONING_EFFORT=low` | Kein API-Key (das Abo hat keinen API-Zugang). Vorbehalt wie bei Hermes (4e „Vorbehalte Codex-OAuth“): laut OpenAI „nur für persönliche Entwicklungsnutzung“, Preview, und das 5-Stunden-Limit teilt sich Hindsight mit Hermes/Codex. Ist es erschöpft, verschiebt Hindsight retain um 30 min (kein Datenverlust). `openai-codex` (dieselbe `auth.json` wie Hermes) **nicht** – zwei Prozesse auf einem Refresh-Token ergeben `refresh_token_reused`. |
+| Embeddings / Reranker | lokal auf CPU, **mehrsprachig**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 dim) und `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` | Die Chart-Defaults (`BAAI/bge-small-en-v1.5`, `hindsight-ai/hs-rerank-1`) sind englisch bzw. „acht Sprachen“ ohne Nennung von Deutsch. Die gewählten sind Hindsights eigenes Mehrsprachen-Beispiel (`docker/docker-compose/custom-models`). Download beim ersten Start von Hugging Face auf ein Cache-Volume. **Embedder später wechseln = `hindsight-admin reembed`** (Dimension allein reicht nicht). |
+| Zugriff auf die Daten-API | Nur im Cluster: Cilium lässt an Port 8888 nur den Hermes-Pod und die eigene Control Plane; **zusätzlich Bearer-Key** (`HINDSIGHT_API_TENANT_EXTENSION` = `ApiKeyTenantExtension`, Key in SOPS), den Hermes (`HINDSIGHT_API_KEY`) und die Control Plane (`HINDSIGHT_CP_DATAPLANE_API_KEY`) mitschicken. Kein Ingress auf `/v1` | Die API hat von Haus aus keine Authentifizierung – wer sie erreicht, liest und löscht das ganze Gedächtnis. Zwei unabhängige Hürden statt einer Netzwerkregel. |
+| UI-Login | `HINDSIGHT_CP_ACCESS_KEY` (Zufallswert in SOPS), Ingress Traefik + Let's Encrypt nur für die Control Plane | oauth2-proxy gibt es auf karibik (noch) nicht; nach dem Keycloak-Cutover kann ein ForwardAuth davor (die UI selbst kennt kein OIDC). |
+| Storage | PVC `hindsight-api-model-cache` 5Gi, StorageClass `longhorn-cache` (1 Replik, keine Backup-Gruppe, kommt aus dem Hermes-Overlay), `helm.sh/resource-policy: keep`; trägt `/home/hindsight/.cache` (Modelle) und per subPath `/home/hindsight/.hindsight` (ChatGPT-Credentials) | Modelle sind reproduzierbar, der ChatGPT-Login in Minuten wiederholt – kein Backup nötig, aber `keep`, damit ein Helm-Uninstall den Login nicht mitnimmt. Die Memory-Daten selbst liegen in Postgres (gesichert). |
+| Pod Security | Namespace `restricted`; Chart-Werte (non-root UID 1000, drop ALL, kein Privilege-Escalation) plus `seccompProfile: RuntimeDefault`; Rootfs beschreibbar; API ohne SA-Token | Beide Images schreiben Caches ins Rootfs (Next.js, Python). |
+| Egress (API) | `postgres-cluster` (5432), Hugging Face (`huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels), OpenAI (`api.openai.com`, `auth.openai.com`, `chatgpt.com`), alle 443; Control Plane nur → API | Wie bei Hermes: eine Policy pro Ziel, Rezept 4e „Egress erweitern“. |
+| Hermes-Seite | Init-Container `install-extras`: `hermes plugins install hindsight --enable --yes-deps` (nur wenn fehlend), schreibt `/opt/data/hindsight/config.json` (0600) bei jedem Start, entfernt ein etwaiges Honcho-Plugin; HelmRelease `config.memory.provider: hindsight`, `config.plugins.enabled: [hindsight]`, Secret `hermes-hindsight` als `HINDSIGHT_API_KEY` | Git bleibt die Wahrheit (config.yaml wird bei jedem Start neu geschrieben). Plugin-Updates bewusst von Hand (`hermes plugins update hindsight`), damit nicht jeder Pod-Start den Stand wechselt. Hermes hängt **nicht** per `dependsOn` an Hindsight: ist die API weg, puffert das Plugin retain und liefert keinen Recall – Hermes antwortet trotzdem. |
+| Eine Bank | `bank_id: hermes` für alle Kanäle (Telegram, Dashboard, Cron) | Ein Nutzer, ein Gedächtnis. Mehrere Banks (z. B. pro Projekt) gingen über `bank_id_template` oder `.hindsight/config.toml` in vertrauten Repos. |
+
+### Aufbau
+
+| Datei | Inhalt |
+| --- | --- |
+| [base/helm-repository/hindsight.yaml](../../infrastructure/base/helm-repository/hindsight.yaml) | OCI-HelmRepository (per Kustomize-`namespace` im Namespace `hindsight`) |
+| [base/apps/hindsight/](../../infrastructure/base/apps/hindsight/) | Namespace (PSS restricted), HelmRelease (`valuesFrom` für Passwort, API-Key, UI-Key), CiliumNetworkPolicies, default-deny + allow-acme |
+| [karibik/hindsight/](../../infrastructure/karibik/hindsight/) | Overlay + Secrets `hindsight-db` (CNPG-Datei), `hindsight-api-key`, `hindsight-cp` (SOPS) |
+| [karibik/cloudnative-pg-cluster/](../../infrastructure/karibik/cloudnative-pg-cluster/) | Rolle `hindsight` (cluster.yaml), Database `hindsight` (database.yaml), Secret aus `secrets/hindsight-encrypted.env` |
+| [base/apps/hermes/helm-release.yaml](../../infrastructure/base/apps/hermes/helm-release.yaml) | `config.memory.provider`, `config.plugins.enabled`, `extraEnvFrom` `hermes-hindsight`, Plugin-Block in `install-extras` |
+| [base/apps/hermes/networkPolicy.yaml](../../infrastructure/base/apps/hermes/networkPolicy.yaml) | `allow-egress-to-hindsight` (Namespace `hindsight`, Label `app.kubernetes.io/component: api`, 8888) |
+| [karibik/hermes/kustomization.yaml](../../infrastructure/karibik/hermes/kustomization.yaml) | Secret `hermes-hindsight` aus `../hindsight/hindsight-api-key-encrypted.env` |
+| `configs/secret-encrypted.env` | neuer Key `HINDSIGHT_DOMAIN=hindsight.hummler.com` |
+| [clusters/karibik/infrastructure.yaml](../../clusters/karibik/infrastructure.yaml) | Kustomization `hindsight` (dependsOn longhorn, traefik, cluster-issuer, cloudnative-pg-cluster, hermes; Timeout 20m wegen 9-GB-Image) |
+
+Die drei Zufallswerte (DB-Passwort, API-Key, UI-Key) wurden beim Einrichten erzeugt und mit dem
+Cluster-Recipient verschlüsselt; nachsehen mit `sops -d <datei>`.
+
+### Schritt 1 – cluster-secrets (erledigt 2026-11-18)
+
+`HINDSIGHT_DOMAIN=hindsight.hummler.com` steht bereits in `configs/secret-encrypted.env` (per `sops set`
+ergänzt, im selben Commit). Ohne den Key schlüge die Kustomization `hindsight` mit „variable not set“ fehl
+(strict substitution). DNS ist schon da (`*.hummler.com` → karibik-LB).
+
+### Schritt 2 – Push, pgvector anlegen, Rollout prüfen
+
+1. Push. Flux legt zuerst Rolle und Database im CNPG-Cluster an (`cloudnative-pg-cluster`), dann Namespace,
+   Secrets und HelmRelease `hindsight`.
+2. **Einmalig** die Extension als Superuser anlegen (der DB-Owner darf das nicht, `vector` ist nicht „trusted“):
+
+   ```bash
+   kubectl -n cnpg-cluster exec postgres-cluster-1 -c postgres -- psql -U postgres -d hindsight -c 'CREATE EXTENSION IF NOT EXISTS vector'
+   ```
+
+   Vorher ist der API-Pod in `CrashLoopBackOff` (Migration scheitert) – das ist erwartet. Sobald der CNPG-Operator
+   ≥ 1.26 ist (Renovate), kann das in `database.yaml` als `spec.extensions: [{name: vector}]` stehen.
+3. Prüfen:
+
+   ```bash
+   flux -n flux-system get kustomizations hindsight hermes
+   kubectl -n hindsight get pods,pvc,ingress
+   kubectl -n hindsight logs deploy/hindsight-api --tail=50      # erster Start: Modell-Download (Minuten), dann "Uvicorn running"
+   ```
+
+   Der API-Pod meldet erst „ready“, wenn Embedder und Reranker geladen sind (Startup-Probe bis 15 min).
+
+### Schritt 3 – ChatGPT-Login für retain/reflect (einmalig)
+
+Ohne Login startet die API zwar, aber jeder `retain` schlägt fehl (Log: fehlende Credentials). Der Login läuft
+über OpenAIs „Sign in with ChatGPT“; die Callback-URL zeigt auf `127.0.0.1:1455`, deshalb per Port-Forward
+aus dem Pod heraus:
+
+```bash
+kubectl -n hindsight port-forward deploy/hindsight-api 1455:1455        # Terminal 1, offen lassen
+kubectl -n hindsight exec -it deploy/hindsight-api -- hindsight-admin chatgpt login --no-browser   # Terminal 2
+```
+
+Die gedruckte URL im Browser auf dem Laptop öffnen, mit dem ChatGPT-Konto anmelden und die **Nutzung des Abos
+in Drittanbieter-Apps** erlauben (Nachfrage im Flow; später erneut mit `--enable-plan-usage`). Der Browser ruft
+danach `127.0.0.1:1455` auf dem Laptop auf, der Port-Forward trägt das in den Pod, das Skript schreibt
+`/home/hindsight/.hindsight/chatgpt/credentials.json` (0600, auf dem Cache-Volume). Prüfen:
+
+```bash
+kubectl -n hindsight exec deploy/hindsight-api -- hindsight-admin chatgpt status
+```
+
+Alternative ohne Port-Forward: `pip install hindsight-api` auf dem Laptop, dort `hindsight-admin chatgpt login`,
+die Datei in den Pod kopieren und `hindsight-admin chatgpt login --from-file <datei>` ausführen, danach auf
+dem Laptop `hindsight-admin chatgpt logout --local-only` (das Refresh-Token rotiert, zwei Kopien kollidieren).
+
+Das Token erneuert sich selbst (Access-Token 1 h). Nach einem Volume-Verlust: Schritt 3 wiederholen.
+
+### Schritt 4 – Hermes und UI prüfen
+
+```bash
+kubectl -n hermes logs deploy/hermes -c install-extras | grep -i -E "hindsight|honcho"
+kubectl -n hermes exec deploy/hermes -c hermes-agent -- sh -c 'cd /opt/data && hermes memory status'   # Provider: hindsight
+kubectl -n hermes exec deploy/hermes -c hermes-agent -- sh -c 'cd /opt/data && hermes plugins list | grep -A1 hindsight'
+```
+
+Dann im Chat etwas Merkbares sagen („Merk dir: …“) und nach einem `/new` danach fragen. In der UI
+(`https://hindsight.hummler.com`, Login mit dem UI-Key aus `sops -d infrastructure/karibik/hindsight/hindsight-cp-encrypted.env`)
+erscheint die Bank `hermes` mit den extrahierten Fakten; dort lassen sich auch Recall-Abfragen testen.
+Hermes markiert injizierte Erinnerungen im Chat mit 👁️ (`recall_indicator`).
+
+### Betrieb
+
+| Was | Wie |
+| --- | --- |
+| Chart-Update | Renovate bumpt `version` im HelmRelease; die Images hängen an der appVersion. API-Image ~9 GB: Rollout dauert. |
+| Plugin-Update | `kubectl -n hermes exec deploy/hermes -c hermes-agent -- sh -c 'cd /opt/data && hermes plugins update hindsight'`, dann Pod-Neustart. Der Init-Container installiert nur, wenn das Verzeichnis fehlt. |
+| Embedder wechseln | Env im HelmRelease ändern, Rollout, dann `kubectl -n hindsight exec deploy/hindsight-api -- hindsight-admin reembed`. Ohne reembed startet der Server bei anderer Dimension nicht. |
+| Bank exportieren | `hindsight-admin export-bank` / `import-bank` im API-Pod (Migration, zweite Instanz). |
+| Memory zurücksetzen | Bank in der UI löschen; die Hermes-Dateien `MEMORY.md`/`USER.md` sind davon unabhängig (`hermes memory reset`). |
+| Keycloak-Cutover | Traefik-ForwardAuth vor den Ingress, `HINDSIGHT_CP_ACCESS_KEY` kann dann bleiben (zweiter Faktor) oder entfallen. |
+
+### Stolpersteine
+
+- **`401` in der UI oder im Hermes-Log** → API-Key-Mismatch: `hindsight-api-key` (Namespace `hindsight`) und
+  `hermes-hindsight` (Namespace `hermes`) kommen aus derselben SOPS-Datei; nach einer Änderung beide Pods neu starten.
+- **`refresh_token_reused`** im API-Log → die ChatGPT-Credentials wurden an zweiter Stelle benutzt (Laptop-Login
+  nicht mit `logout --local-only` beendet). Schritt 3 wiederholen.
+- **retain bleibt liegen** („deferred“, Retry in 30 min) → 5-Stunden-Limit des Abos erreicht, Hermes und Hindsight
+  teilen es. `HINDSIGHT_API_LLM_REASONING_EFFORT=low` ist schon gesetzt; notfalls `auto_retain` im Plugin über
+  `retain_every_n_turns` drosseln.
+- **API startet nicht, „model init timeout“** → Hugging-Face-Download langsam; `HINDSIGHT_API_MODEL_INIT_TIMEOUT`
+  (900 s) erhöhen oder Egress prüfen (`hubble observe -n hindsight --verdict DROPPED`).
+- **Pod `Pending`, PVC `WaitForFirstConsumer`** → normal bis zum Scheduling; `longhorn-cache` hat 1 Replik, der
+  Pod ist an den Node des Volumes gebunden.
+- **Hermes: „Hindsight API … unreachable“** → Egress-Policy oder Service-Name; Test aus dem Hermes-Pod:
+  `curl -s -o /dev/null -w '%{http_code}' http://hindsight-api.hindsight.svc.cluster.local:8888/health`.
 
 ## 5. Rezept: weitere App nach karibik holen (Phase 1-3)
 

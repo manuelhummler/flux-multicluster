@@ -240,6 +240,43 @@ spec:
                     cp /opt/m365-graph-src/graph.py "$SKILL_DIR/scripts/graph.py"
                     chmod 644 "$SKILL_DIR/SKILL.md" "$SKILL_DIR/scripts/graph.py"
                     echo "[install-extras] Skill m365-graph nach $SKILL_DIR kopiert"
+                    # Memory-Provider Hindsight (Doku 4g): Plugin aus dem Hermes-Katalog nach /opt/data/plugins/hindsight
+                    # (Git von github.com, Abhaengigkeiten hindsight-client/-embed von PyPI – beides freigegeben).
+                    # Nur installieren, wenn es fehlt; Updates bewusst von Hand (hermes plugins update hindsight).
+                    # Honcho (am 2026-11-18 kurz ausprobiert, nie konfiguriert) wird abgebaut, falls noch da.
+                    if [ -d /opt/data/plugins/honcho ]; then
+                      if hermes plugins remove honcho </dev/null >/dev/null 2>&1; then
+                        echo "[install-extras] Plugin honcho entfernt"
+                      else
+                        rm -rf /opt/data/plugins/honcho
+                        /opt/hermes/.venv/bin/python -P - <<'PY'
+                    import json, pathlib
+                    p = pathlib.Path("/opt/data/plugins/.install-metadata.json")
+                    try:
+                        d = json.loads(p.read_text())
+                    except Exception:
+                        d = None
+                    if isinstance(d, dict) and d.pop("honcho", None) is not None:
+                        p.write_text(json.dumps(d, indent=2) + "\n")
+                    PY
+                        echo "[install-extras] Plugin honcho (Verzeichnis + Metadaten) entfernt"
+                      fi
+                    fi
+                    if [ -d /opt/data/plugins/hindsight ]; then
+                      echo "[install-extras] Plugin hindsight vorhanden"
+                    elif hermes plugins install hindsight --enable --yes-deps </dev/null; then
+                      echo "[install-extras] Plugin hindsight installiert"
+                    else
+                      echo "[install-extras] WARNUNG: Plugin hindsight nicht installiert (Egress github.com/PyPI?), Start geht weiter"
+                    fi
+                    # Plugin-Konfiguration (profilgebunden, 0600): Modus local_external gegen den Cluster-Service,
+                    # eine Bank "hermes", Hybrid (Auto-Recall/-Retain plus Tools hindsight_recall/_retain/_reflect).
+                    # Kein Key in der Datei: das Plugin faellt auf HINDSIGHT_API_KEY aus der Umgebung zurueck.
+                    mkdir -p /opt/data/hindsight
+                    umask 077
+                    printf '{\n  "mode": "local_external",\n  "api_url": "http://hindsight-api.hindsight.svc.cluster.local:8888",\n  "bank_id": "hermes",\n  "memory_mode": "hybrid",\n  "recall_budget": "mid",\n  "auto_recall": true,\n  "auto_retain": true,\n  "recall_sync": false\n}\n' > /opt/data/hindsight/config.json
+                    umask 022
+                    echo "[install-extras] /opt/data/hindsight/config.json geschrieben"
                     # Umgebungswissen fuer den Agenten: Hermes laedt HERMES.md aus dem Arbeitsverzeichnis des
                     # Gateways (= HERMES_HOME, terminal.cwd ".") als "Project Context" in jeden System-Prompt
                     # (agent/prompt_builder.py build_context_files_prompt; Vorrang vor AGENTS.md/CLAUDE.md,
@@ -312,6 +349,15 @@ spec:
         backend: local
       agent:
         gateway_timeout: 1800
+      # Langzeit-Memory: Provider-Plugin hindsight (Doku 4g) gegen die Hindsight-API im Namespace hindsight.
+      # Das eingebaute Memory (MEMORY.md/USER.md) bleibt zusaetzlich aktiv. Plugin-Installation, Honcho-Abbau und
+      # die Datei hindsight/config.json (Modus local_external, api_url, Bank "hermes") erledigt install-extras;
+      # den Bearer-Key liefert HINDSIGHT_API_KEY aus dem Secret hermes-hindsight (extraEnvFrom).
+      memory:
+        provider: hindsight
+      plugins:
+        enabled:
+          - hindsight
       # Websuche serverseitig bei OpenAI (Responses-API-Tool web_search ueber den Codex-Transport): kein
       # API-Key, kein zusaetzlicher Egress (laeuft ueber chatgpt.com), Kosten im ChatGPT-Abo. Nur Suche;
       # das Lesen ganzer Seiten (web_extract) braucht weiterhin einen Anbieter wie Firecrawl/Tavily. Doku 4e.
@@ -375,6 +421,9 @@ spec:
     extraEnvFrom:
       - secretRef:
           name: hermes-secrets
+      # Bearer-Key der Hindsight-API (Overlay-Secret aus derselben SOPS-Datei wie im Hindsight-Overlay)
+      - secretRef:
+          name: hermes-hindsight
     extraEnv:
       # Whisper-Modelle klassisch ueber cdn-lfs*.huggingface.co laden statt ueber den Xet-Storage
       # (*.xethub.hf.co) – haelt die Egress-Policy auf *.huggingface.co beschraenkt.

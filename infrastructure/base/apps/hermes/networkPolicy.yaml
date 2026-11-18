@@ -189,6 +189,25 @@ spec:
         - ports:
             - port: "443"
 ---
+# Hindsight (Doku 4g): Memory-Provider-Plugin -> Daten-API im Namespace hindsight (Service hindsight-api, 8888).
+# Gegenstueck ist allow-ingress-to-api dort. Der Pfad bleibt im Cluster (Cilium, kein Ingress).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-to-hindsight
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: hermes
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: hindsight
+            app.kubernetes.io/component: api
+      toPorts:
+        - ports:
+            - port: "8888"
+---
 # Noch NICHT freigegeben (bewusst): api.openai.com (nur fuer Provider openai-api noetig),
 # hermes-agent.nousresearch.com (Modellkatalog, nur Komfort fuer /model), allgemeines Internet (Web-Tools des
 # Agenten), kube-apiserver (kein SA-Token gemountet).
