@@ -1363,6 +1363,11 @@ Alternative ohne Port-Forward: `pip install hindsight-api` auf dem Laptop, dort 
 die Datei in den Pod kopieren und `hindsight-admin chatgpt login --from-file <datei>` ausführen, danach auf
 dem Laptop `hindsight-admin chatgpt logout --local-only` (das Refresh-Token rotiert, zwei Kopien kollidieren).
 
+**Danach den API-Pod neu starten** – der laufende Prozess merkt sich „keine Credentials“ vom Start und liest die
+Datei nicht nach (beobachtet 2026-11-18: retain scheiterte weiter, bis `kubectl -n hindsight rollout restart
+deploy/hindsight-api`). Liegengebliebene Retain-Tasks wiederholt der Worker nur wenige Male; was in dieser Zeit
+gesprochen wurde, landet nicht im Gedächtnis.
+
 Das Token erneuert sich selbst (Access-Token 1 h). Nach einem Volume-Verlust: Schritt 3 wiederholen.
 
 ### Schritt 4 – Hermes und UI prüfen
