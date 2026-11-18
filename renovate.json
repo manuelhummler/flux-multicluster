@@ -12,22 +12,11 @@
       "/infrastructure/.+\\.yaml$/"
     ]
   },
-  "hostRules": [
-    {
-      "hostType": "docker",
-      "matchHost": "ghcr.io",
-      "username": "blackwolfk-9",
-      "password": "{{ secrets.GHCR_TOKEN }}"
-    }
-  ],
   "packageRules": [
     {
+      "description": "fest-der-demokratie: privates Image auf ghcr.io (nur captain-kube), der self-hosted Renovate hat keinen Registry-Zugang",
       "matchPackageNames": ["ghcr.io/open-project-e-v/fest-der-demokratie"],
-      "versioning": "numeric",
-      "automerge": true,
-      "automergeType": "branch",
-      "ignoreTests": true,
-      "prPriority": 10
+      "enabled": false
     },
     {
       "description": "Self-hosted Renovate auf karibik: das Chart erscheint mehrmals taeglich, Bumps nur einmal pro Woche",

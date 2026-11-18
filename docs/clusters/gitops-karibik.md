@@ -477,6 +477,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | Todoist | Offizieller Remote-MCP-Server `https://ai.todoist.net/mcp` aus dem Hermes-Katalog, deklarativ als `config.mcp_servers.todoist` im HelmRelease; OAuth 2.1 mit Dynamic Client Registration, Einwilligung einmalig über das Dashboard, Token auf dem Volume | Entscheidung 2026-11-11. Kein API-Token in Git/SOPS nötig, kein lokaler MCP-Prozess im Pod (nur HTTP). Scope `data:read_write` (Aufgaben, Projekte, Kommentare lesen und schreiben). |
 | Composio | **Wieder entfernt** (2026-11-18, am Tag der Einrichtung). Der gehostete Meta-MCP `connect.composio.dev` war kurz als `config.mcp_servers.composio` angebunden (OAuth-DCR, Egress-Policy); der einzige konkrete Bedarf, SharePoint/OneDrive, läuft nun direkt als Spiegel im Cluster | Composio ist ein Zwischenhändler für Geschäftsdaten mit Tokens auf fremden Servern, dazu agentengerichtete Werbe-Anweisungen auf `composio.dev/hermes` und Remote-Ausführungs-Tools, die die Pod-Sandbox umgehen. Ohne Bedarf kein Grund, das offen zu lassen. Details unten unter „Composio (entfernt)“. |
 | SharePoint/OneDrive | **Spiegel im Cluster** statt API-Zugriff: drei Sidecars `onedrive` (OneDrive des Kontos), `office` (Site `office`, Bibliothek „Dokumente“) und `familie` (Site `familie`, Bibliothek „Dokumente“) mit [abraunegg/onedrive](https://github.com/abraunegg/onedrive) (Image `driveone/onedrive:2.5.12-alpine`) im Hermes-Pod, Monitor-Modus in beide Richtungen, gemeinsame PVC `hermes-m365` (StorageClass `longhorn-cache`: 1 Replik, Recurring-Job-Gruppe `no-backup`), Hermes sieht die Dateien unter `/opt/onedrive`, `/opt/sharepoint/office` und `/opt/sharepoint/familie`. Login je Sidecar per Device-Code-Flow gegen die **eigene Entra-App** `hermes-onedrive` (Public Client), Konfiguration als ConfigMap `m365-sync` im Overlay | Entscheidung 2026-11-18. Hermes arbeitet mit lokalen Dateien (grep, Python, pandoc) deutlich besser als über Graph-Tool-Calls; der Client verhält sich wie der Desktop-OneDrive (inotify-Upload, Deltas alle 5 min). Kein Composio: Geschäftsdokumente nicht durch einen Zwischenhändler. Kein `rclone mount` (FUSE unter PSS `restricted` unmöglich), kein `rclone bisync` (Aufsatz statt Client). Keine zusätzliche Sicherung: OneDrive wird bereits gesichert, der Spiegel baut sich neu auf. Kein Löschschutz möglich (`no_remote_delete` gibt es nur upload-only) – Papierkorb in SharePoint ist das Netz. |
+| Microsoft Graph | Eigenes Skill `m365-graph` (Python mit MSAL und requests aus der Hermes-Umgebung, kein MCP, kein Node) gegen eine **zweite Entra-App `hermes-graph`** mit delegierten Rechten `Files.Read.All`, `Sites.Read.All`, `Mail.ReadWrite`, `Calendars.ReadWrite`, `User.Read`, `offline_access` – bewusst **ohne `Mail.Send`** und ohne Datei-Schreibrechte. Skill-Dateien als ConfigMap im Overlay, `install-extras` kopiert sie nach `skills/productivity/m365-graph/` | Entscheidung 2026-11-18. Ergänzt den Spiegel um das, was dort nicht liegt (750 GB OneDrive, Metadaten, Versionen) und um Outlook. Prinzip „Graph liest, der Spiegel schreibt“: ein Graph-Token mit `Files.ReadWrite.All` gäbe dem Agenten Löschzugriff auf das gesamte OneDrive. Mail: Entwürfe ja, Senden nein (Graph trennt das sauber über `Mail.Send`); `Mail.ReadWrite` erlaubt technisch auch Löschen/Verschieben – Grenze ist das Recht, nicht das Skript. Kalender schreibend auf Wunsch. Kein neuer Egress (`login.microsoftonline.com`, `graph.microsoft.com` sind für die Sidecars offen). |
 | Google Workspace | Skill `google-workspace` mit eigenem OAuth-Desktop-Client; Client-Secret als SOPS-Secret auf `/opt/data/google_client_secret.json` gemountet, Token `google_token.json` auf dem Volume | Entscheidung 2026-11-11. Volle Scopes (Gmail senden/ändern, Drive, Calendar, Sheets, Docs, Contacts) – Inhalte gehen beim Verarbeiten an OpenAI. Nur-Mail-Alternative wäre das `himalaya`-Skill mit App-Passwort. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
 
@@ -955,6 +956,47 @@ Microsoft-Host auf, die Policy ergänzen. Exit-Code 78 eines Sidecars = Client v
 **Trennen:** `<name>/conf/refresh_token` löschen (oder `ONEDRIVE_LOGOUT=1` einmalig am Sidecar) und in Entra
 die App löschen. Volume-Verlust ist harmlos: Schritt 4 wiederholen, der Spiegel baut sich neu auf.
 
+### Microsoft Graph (Skill `m365-graph`: OneDrive-Suche, Outlook-Mail, Kalender)
+
+**Zweck:** Der Spiegel (voriger Abschnitt) deckt nur die gewählten Ordner ab. Für den Rest des OneDrive, für
+Metadaten und Versionen und für Outlook gibt es das Skill
+[`m365-graph`](../../infrastructure/karibik/hermes/m365-graph/SKILL.md) mit dem Skript
+[`graph.py`](../../infrastructure/karibik/hermes/m365-graph/graph.py). Reines Python (MSAL für den Device-Code-
+Flow und den Token-Cache, `requests` für Graph; beides ist in der Hermes-Umgebung vorhanden), JSON-Ausgabe,
+kein MCP-Prozess. Befehle: `drive ls|search|info|get|versions` (nur lesend, `get` legt eine Lesekopie unter
+`cache/m365-graph/` ab), `mail list|search|read|draft` (Entwurf, auch Antwortentwurf; nie senden),
+`cal list|get|create|update|delete` (`delete` nur mit `--yes`). Laufwerke: `onedrive`, `office`, `familie` (die
+Drive-IDs stehen im Skript) oder eine beliebige `b!…`-ID.
+
+**Rechte und Grenzen:** zweite Entra-App `hermes-graph` (Public Client, Device-Code, dieselben drei Redirect-
+URIs wie `hermes-onedrive`), delegiert `Files.Read.All`, `Sites.Read.All`, `Mail.ReadWrite`,
+`Calendars.ReadWrite`, `User.Read`, `offline_access`. Kein `Mail.Send`: Entwürfe landen in Outlook, senden
+muss der Nutzer. Keine Datei-Schreibrechte: Änderungen laufen über den Spiegel. `Mail.ReadWrite` erlaubt
+technisch auch Verschieben und Löschen (30 Tage wiederherstellbar); das Skript bietet es nicht an, aber das
+Token könnte es. Das Skill-Dokument und `HERMES.md` weisen den Agenten an, Mail- und Dateiinhalte als Daten
+zu behandeln, nicht als Anweisungen.
+
+**Deklarativ:** ConfigMap `m365-graph-skill` (Overlay, `configMapGenerator` aus `m365-graph/`), im HelmRelease
+als Volume eingehängt; `install-extras` kopiert `SKILL.md` und `scripts/graph.py` bei jedem Start nach
+`/opt/data/skills/productivity/m365-graph/` (Kopie statt Mount, damit das Verzeichnis UID 10000 gehört).
+Token-Cache `/opt/data/m365_graph_token.json` (0600, Backup-TODO). Kein neuer Egress.
+
+**Einrichtung:**
+
+1. App anlegen (erledigt 2026-11-18 per Azure-CLI wie `hermes-onedrive`: `az ad app create` mit
+   `--required-resource-accesses` aus den aufgelösten Scope-IDs, `az ad sp create`, `az ad app permission
+   admin-consent` – auch hier schlug die Zustimmung direkt nach dem Anlegen einmal fehl, Wiederholung nach
+   ~30 s ging durch). App `hermes-graph`, Anwendungs-ID `37e2fc1b-cfbf-4c14-8e17-b9e31bde2ee6`, Tenant wie oben,
+   Grant `AllPrincipals` für alle sechs Scopes. Die App-ID steht im Skript (`CLIENT_ID`), die Tenant-ID ebenso.
+2. Pushen, Reconcile, Pod-Neustart; Log von `install-extras` zeigt „Skill m365-graph … kopiert“.
+3. Einmaliger Login (blockiert bis zur Bestätigung, maximal 15 Minuten):
+   `kubectl --context karibik -n hermes exec -it deploy/hermes -c hermes-agent -- sh -c 'cd /opt/data && HOME=/opt/data /opt/data/bin/python skills/productivity/m365-graph/scripts/graph.py auth'`
+4. Prüfen: `… graph.py me`, dann im Chat „Was steht diese Woche in meinem Outlook-Kalender?“ und „Suche in
+   meinem OneDrive nach …“. Der Agent soll für gespiegelte Ordner weiterhin lokal arbeiten (Regel in
+   `HERMES.md` und im Skill).
+
+**Trennen:** Token-Datei löschen, in Entra die App `hermes-graph` löschen.
+
 ### Egress erweitern (Rezept)
 
 Alle Policies liegen in [base/apps/hermes/networkPolicy.yaml](../../infrastructure/base/apps/hermes/networkPolicy.yaml),
@@ -1108,7 +1150,7 @@ aus demselben Chart, weil Renovate pro Lauf nur eine Plattform bedient:
 | Betriebsmodell | CronJob, **kein** Webhook/Ingress | Kein öffentlicher Endpunkt nötig. Nachteil: Reaktion auf Checkboxen im Dependency-Dashboard/MR erst beim nächsten Lauf (≤ 1 h). |
 | Repos | **feste Liste** (`repositories`), kein `autodiscover` | Nichts passiert ungeplant, auch wenn das Token mehr Repos sehen kann. Neues Repo = Eintrag im HelmRelease. |
 | Konfiguration | Global (Admin) im HelmRelease als `config.js`, Repo-Regeln bleiben im jeweiligen Repo (`renovate.json`) | `config.js` liest Tokens aus Umgebungsvariablen – nichts Geheimes in der ConfigMap. `requireConfig: required` + `onboarding: true`: ohne Repo-Config gibt es nur einen Onboarding-PR/-MR. |
-| Secrets | Je Instanz eine SOPS-Datei im Overlay → Secret → `envFrom` | Muster wie hermes. `GHCR_TOKEN` wird über `secrets` in der globalen Config bereitgestellt, damit `{{ secrets.GHCR_TOKEN }}` in `renovate.json` unverändert funktioniert (vorher Mend-App-Secret). |
+| Secrets | Je Instanz eine SOPS-Datei im Overlay → Secret → `envFrom` | Muster wie hermes. Kein Registry-Token: das private ghcr-Image von fest-der-demokratie ist von Renovate ausgenommen. |
 | Commits (GitHub) | `platformCommit: enabled` | Commits über die API, von GitHub als „Verified“ signiert, Autor ist der Token-Besitzer. |
 | Egress | Entity `world` auf TCP 443, sonst default-deny | Renovate fragt jede Registry, jedes Helm-Repo und jede Paketquelle der Repos ab und lädt Tools nach – eine FQDN-Allowlist würde bei jeder neuen Abhängigkeit still brechen. `world` schließt kube-apiserver und Cluster-Pods aus. |
 | Pod Security | Namespace `renovate` mit PSS `restricted`, UID 12021 (User des Images), kein SA-Token (postRenderer) | Root-FS bleibt beschreibbar: containerbase installiert node/helm/… zur Laufzeit. |
@@ -1141,8 +1183,10 @@ PAT gilt zwar für alle Repos des Bots, der hat aber nur dieses eine. `workflow`
 Lege das Repo später in eine Organisation, geht auch ein fine-grained PAT des Bots (Contents, Pull requests,
 Issues, Workflows: Read and write; Commit statuses, Checks: Read).
 
-**GHCR** (`GHCR_TOKEN`): der Lese-Token für `ghcr.io/open-project-e-v/fest-der-demokratie` (classic PAT
-`read:packages` des Accounts `blackwolfk-9`, wie bisher in der Mend-App hinterlegt).
+**Kein GHCR-Token** (Entscheidung 2026-11-18): Die Mend-App hatte einen Lese-Zugang für das private Image
+`ghcr.io/open-project-e-v/fest-der-demokratie` (Account `blackwolfk-9`, kein Zugriff mehr). Der self-hosted
+Renovate schlägt das Image nicht nach (`enabled: false` in `renovate.json`); die frühere Automerge-Regel
+dafür ist entfallen. Die App läuft nur auf captain-kube.
 
 **GitLab** (`RENOVATE_TOKEN` der Instanz `renovate-gitlab`): Personal Access Token mit `api`, `read_user`,
 `write_repository` eines Users, der in `hummler-gbr/pro-makler` mindestens *Developer* ist (Project/Group

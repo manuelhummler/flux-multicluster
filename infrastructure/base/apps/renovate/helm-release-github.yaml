@@ -66,10 +66,6 @@ spec:
           requireConfig: 'required',
           // Commits ueber die GitHub-API: verifiziert, Autor = Besitzer des Tokens
           platformCommit: 'enabled',
-          // fuer {{ secrets.GHCR_TOKEN }} in renovate.json (hostRule ghcr.io, privates Image fest-der-demokratie)
-          secrets: {
-            GHCR_TOKEN: process.env.GHCR_TOKEN,
-          },
         };
       # --- Pod Security "restricted" (Container) ---
       securityContext:
@@ -77,7 +73,7 @@ spec:
         capabilities:
           drop: [ALL]
 
-    # RENOVATE_TOKEN (GitHub-PAT) und GHCR_TOKEN aus dem SOPS-Secret im Overlay (envFrom).
+    # RENOVATE_TOKEN (classic PAT des Bot-Accounts) aus dem SOPS-Secret im Overlay (envFrom).
     existingSecret: renovate-github-env
 
     env:

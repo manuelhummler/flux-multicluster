@@ -20,6 +20,13 @@ configMapGenerator:
   # weitere Zeile eintragen – jede Aenderung daran verlangt einmalig ONEDRIVE_RESYNC=1 am betroffenen
   # Sidecar, Rezept in der Doku). Keine Secrets darin. Ohne Suffix-Hash: die Sidecars lesen die Dateien nur
   # beim Start, Aenderung = rollout restart.
+  # Skill m365-graph (Microsoft Graph: Dateien lesen, Mail lesen + Entwuerfe, Kalender; Doku 4e "Microsoft
+  # Graph"): der Init-Container install-extras kopiert beide Dateien bei jedem Start nach
+  # /opt/data/skills/productivity/m365-graph/. App-ID und Drive-IDs stehen im Skript, Token entsteht per Login.
+  - name: m365-graph-skill
+    files:
+      - SKILL.md=m365-graph/SKILL.md
+      - graph.py=m365-graph/graph.py
   - name: m365-sync
     files:
       - onedrive.config=m365/onedrive.config
