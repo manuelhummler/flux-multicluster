@@ -918,6 +918,16 @@ Spiegel brauchen, lohnt ein eigener Namespace mit RWX-Volume.
 löscht der Agent eine Datei unter einem der drei Pfade, ist sie online im Papierkorb (93 Tage). Wer das nicht
 will, nimmt `download_only` (Lesen) plus einen expliziten Rückweg für einzelne Dateien.
 
+**Wie der Agent davon erfährt:** Mounts allein sagen Hermes nichts. Der Gateway läuft mit Arbeitsverzeichnis
+`/opt/data` (`terminal.cwd: "."`), und `agent/prompt_builder.py` (`build_context_files_prompt`) lädt von dort
+genau eine Projektkontext-Datei in jeden System-Prompt, Reihenfolge `.hermes.md`/`HERMES.md` → `AGENTS.md` →
+`CLAUDE.md` → `.cursorrules`; `SOUL.md` (Identität) kommt unabhängig davon immer dazu. Deshalb schreibt der
+Init-Container `install-extras` bei jedem Start **`/opt/data/HERMES.md`** mit den drei Pfaden, der
+Sync-Semantik (beide Richtungen, Löschen wirkt online) und Verhaltensregeln (Unterordner statt Wurzel, keine
+Temp-Dateien, Löschen nur auf Wunsch). Text im HelmRelease, Git ist die Wahrheit; nach einer Änderung Pod-Neustart
+und `/new` im Chat. Hermes prüft Kontextdateien auf Prompt-Injection und blockt Treffer – den Text sachlich
+halten, keine „ignoriere …“-Formulierungen. Prüfen: `hermes chat -q "Welche Spiegel-Verzeichnisse kennst du?"`.
+
 **Einrichtung (einmalig):**
 
 1. **App in Entra ID registrieren:** <https://entra.microsoft.com> → App-Registrierungen → Neu. Name z. B.

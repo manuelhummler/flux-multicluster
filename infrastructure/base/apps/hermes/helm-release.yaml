@@ -224,6 +224,39 @@ spec:
                     # Git-Identitaet und Credential-Helper; Commits des Agenten sind am Namen erkennbar.
                     printf '# Erzeugt vom Init-Container install-extras (HelmRelease hermes) - nicht editieren.\n[user]\n\tname = Hermes Agent\n\temail = manuel@hummler.com\n[credential]\n\thelper = store\n[init]\n\tdefaultBranch = main\n' > "$AGENT_HOME/.gitconfig"
                     echo "[install-extras] $AGENT_HOME/.gitconfig geschrieben"
+                    # Umgebungswissen fuer den Agenten: Hermes laedt HERMES.md aus dem Arbeitsverzeichnis des
+                    # Gateways (= HERMES_HOME, terminal.cwd ".") als "Project Context" in jeden System-Prompt
+                    # (agent/prompt_builder.py build_context_files_prompt; Vorrang vor AGENTS.md/CLAUDE.md,
+                    # SOUL.md bleibt davon unberuehrt). Ohne diese Datei wuesste der Agent nichts von den
+                    # Spiegel-Verzeichnissen. Bei jedem Start neu geschrieben: Git ist die Wahrheit.
+                    printf '%s\n' \
+                      '# Umgebung dieses Hermes (karibik-Cluster, Pod hermes)' \
+                      '' \
+                      'Diese Datei schreibt der Init-Container install-extras aus dem HelmRelease (Flux-Repo' \
+                      'flux-multicluster, Doku docs/clusters/gitops-karibik.md 4e). Aenderungen gehoeren dorthin.' \
+                      '' \
+                      '## Microsoft-365-Spiegel (OneDrive und SharePoint des Nutzers)' \
+                      '' \
+                      'Drei Verzeichnisse sind lokale Spiegel, die ein OneDrive-Client (Sidecar im selben Pod)' \
+                      'in BEIDE Richtungen synchron haelt. Lokale Aenderungen werden binnen Sekunden hochgeladen,' \
+                      'Online-Aenderungen kommen alle 5 Minuten an:' \
+                      '' \
+                      '- /opt/onedrive            OneDrive des Nutzers (manuel@hummler.com), komplett' \
+                      '- /opt/sharepoint/office   SharePoint-Site "Office", Bibliothek "Dokumente"' \
+                      '- /opt/sharepoint/familie  SharePoint-Site "Familie", Bibliothek "Dokumente"' \
+                      '' \
+                      'Regeln:' \
+                      '- Lesen, Suchen und Auswerten direkt mit Shell-Werkzeugen (grep, find, python, pandoc).' \
+                      '- Schreiben ist erlaubt und landet in OneDrive/SharePoint. Neue Dateien bitte in einen' \
+                      '  passenden Unterordner legen, nicht in die Wurzel.' \
+                      '- Loeschen oder Verschieben wirkt ebenfalls online (Papierkorb 93 Tage). Nur auf' \
+                      '  ausdruecklichen Wunsch des Nutzers, und vorher nennen, was betroffen ist.' \
+                      '- Keine temporaeren Dateien, Caches oder Skript-Ausgaben dort ablegen; dafuer /opt/data.' \
+                      '- Versteckte Dateien (Punkt am Anfang) werden nicht synchronisiert.' \
+                      '- Fehlt ein Verzeichnis oder ist es leer, laeuft der Erstabgleich noch oder der Sidecar' \
+                      '  ist nicht angemeldet: dem Nutzer sagen, nicht selbst anlegen.' \
+                      > /opt/data/HERMES.md
+                    echo "[install-extras] /opt/data/HERMES.md geschrieben"
   values:
     # Ressourcen heissen damit schlicht "hermes" (Deployment, Service, ServiceAccount, PVC);
     # darauf verlassen sich die CiliumNetworkPolicies (io.cilium.k8s.policy.serviceaccount: hermes).
