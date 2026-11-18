@@ -926,7 +926,12 @@ Init-Container `install-extras` bei jedem Start **`/opt/data/HERMES.md`** mit de
 Sync-Semantik (beide Richtungen, Löschen wirkt online) und Verhaltensregeln (Unterordner statt Wurzel, keine
 Temp-Dateien, Löschen nur auf Wunsch). Text im HelmRelease, Git ist die Wahrheit; nach einer Änderung Pod-Neustart
 und `/new` im Chat. Hermes prüft Kontextdateien auf Prompt-Injection und blockt Treffer – den Text sachlich
-halten, keine „ignoriere …“-Formulierungen. Prüfen: `hermes chat -q "Welche Spiegel-Verzeichnisse kennst du?"`.
+halten, keine „ignoriere …“-Formulierungen. Prüfen (verifiziert 2026-11-18, der Agent nennt alle drei Pfade und
+die Löschregel ohne Tool-Aufruf): `kubectl … exec deploy/hermes -c hermes-agent -- sh -c 'cd /opt/data &&
+HOME=/opt/data hermes chat -q "Welche Spiegel-Verzeichnisse kennst du?"'`. **Stolperstein:** ohne `cd /opt/data`
+startet `kubectl exec` in `/opt/hermes` (Installationsbaum), und Hermes überspringt dort die Kontextdatei-Suche
+absichtlich – der Agent sucht dann mit grep nach „Spiegel“ und findet nichts. Der Gateway (Telegram, Dashboard)
+läuft in `/opt/data` und ist nicht betroffen.
 
 **Einrichtung (einmalig):**
 
