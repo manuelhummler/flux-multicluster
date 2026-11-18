@@ -480,6 +480,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | Microsoft Graph | Eigenes Skill `m365-graph` (Python mit MSAL und requests aus der Hermes-Umgebung, kein MCP, kein Node) gegen eine **zweite Entra-App `hermes-graph`** mit delegierten Rechten `Files.Read.All`, `Sites.Read.All`, `Mail.ReadWrite`, `Calendars.ReadWrite`, `User.Read`, `offline_access` – bewusst **ohne `Mail.Send`** und ohne Datei-Schreibrechte. Skill-Dateien als ConfigMap im Overlay, `install-extras` kopiert sie nach `skills/productivity/m365-graph/` | Entscheidung 2026-11-18. Ergänzt den Spiegel um das, was dort nicht liegt (750 GB OneDrive, Metadaten, Versionen) und um Outlook. Prinzip „Graph liest, der Spiegel schreibt“: ein Graph-Token mit `Files.ReadWrite.All` gäbe dem Agenten Löschzugriff auf das gesamte OneDrive. Mail: Entwürfe ja, Senden nein (Graph trennt das sauber über `Mail.Send`); `Mail.ReadWrite` erlaubt technisch auch Löschen/Verschieben – Grenze ist das Recht, nicht das Skript. Kalender schreibend auf Wunsch. Kein neuer Egress (`login.microsoftonline.com`, `graph.microsoft.com` sind für die Sidecars offen). |
 | Google Workspace | Skill `google-workspace` mit eigenem OAuth-Desktop-Client; Client-Secret als SOPS-Secret auf `/opt/data/google_client_secret.json` gemountet, Token `google_token.json` auf dem Volume | Entscheidung 2026-11-11. Volle Scopes (Gmail senden/ändern, Drive, Calendar, Sheets, Docs, Contacts) – Inhalte gehen beim Verarbeiten an OpenAI. Nur-Mail-Alternative wäre das `himalaya`-Skill mit App-Passwort. |
 | Langzeit-Memory | **Hindsight** (self-hosted, Namespace `hindsight`) als Memory-Provider-Plugin; eingebautes Memory bleibt aktiv – siehe **4g** | Entscheidung 2026-11-18 nach Vergleich mit Honcho (Persönlichkeitsmodell, Cloud oder bezahlter API-Key), hwiki (Markdown, kein LLM) und den gehosteten Anbietern: Fakten-/Entitäts-Graph mit zeitlicher Suche passt zu einem Assistenten für Projekte, Server und Termine; ChatGPT-Abo nutzbar, offene UI, alles im Cluster. |
+| Weitere Modelle | Zweiter Anbieter **regio-ai** (OpenAI-kompatibel: `kimi-k3`, `glm-5.3`, `deepseek-v41-flash`, `auto`) als `providers.regio-ai`; Fallback-Kette `fallback_model` (kimi-k3, dann glm-5.3) hinter Codex; Subagenten (`delegation`) auf `deepseek-v41-flash`; Egress `workspace.regio-ai.eu` | Entscheidung 2026-11-18. Entlastet das geteilte ChatGPT-Limit (Hermes + Hindsight) und hält den Agenten bei Codex-Ausfall antwortfähig. Basis-URL (mit Tenant-ID) in cluster-secrets, Key in hermes-secrets über `key_env`. Details unten „Weitere Modelle“. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
 
 ### Aufbau
@@ -997,6 +998,47 @@ Token-Cache `/opt/data/m365_graph_token.json` (0600, Backup-TODO). Kein neuer Eg
    `HERMES.md` und im Skill).
 
 **Trennen:** Token-Datei löschen, in Entra die App `hermes-graph` löschen.
+
+### Weitere Modelle: regio-ai (kimi-k3, glm-5.3, deepseek-v41-flash)
+
+Zweiter LLM-Anbieter neben dem ChatGPT-Abo (Entscheidung 2026-11-18): der regio-ai-Workspace stellt einen
+OpenAI-kompatiblen Endpunkt (`/v1/chat/completions`, Bearer-Key) mit den Modellen `kimi-k3`, `glm-5.3`,
+`deepseek-v41-flash` und `auto` (Anbieter wählt). Hermes nutzt ihn in drei Rollen, alle im HelmRelease
+unter `config`:
+
+| Rolle | Konfiguration | Wirkung |
+| --- | --- | --- |
+| Wählbar | `providers.regio-ai` (`base_url`, `key_env: REGIO_AI_API_KEY`, `api_mode: chat_completions`, `models`) | `/model` im Chat listet die vier Modelle; die Wahl gilt für die Sitzung (config.yaml wird beim Start zurückgesetzt). |
+| Fallback-Kette | `fallback_model: [regio-ai/kimi-k3, regio-ai/glm-5.3]` | Antwortet Codex nicht (5-Stunden-Limit, abgelaufener Login, Störung), übernimmt kimi-k3, dann glm-5.3 für den laufenden Turn. Die Sitzung bleibt auf Codex. |
+| Subagenten | `delegation.provider: regio-ai`, `delegation.model: deepseek-v41-flash` | `delegate_task`-Kinder laufen auf dem günstigen Modell; der Hauptagent plant weiter auf gpt-6-luna. Schont das Abo-Limit, das sich Hermes mit Hindsight teilt. |
+
+Die Basis-URL enthält die Tenant-ID des Workspaces und steht deshalb in `configs/secret-encrypted.env`
+(`REGIO_AI_BASE_URL`, Flux setzt sie beim Build ein), der Key in `hermes-env-encrypted.env`
+(`REGIO_AI_API_KEY`, Hermes liest ihn zur Laufzeit über `key_env`). Kein Dollar-Klammer-Platzhalter für den
+Key im HelmRelease: Flux würde ihn beim Build einsetzen und in die ConfigMap schreiben. Egress:
+`allow-egress-to-regio-ai` (`workspace.regio-ai.eu`, 443).
+
+Einrichten:
+
+1. Im regio-ai-Workspace unter „Zugangsschlüssel“ einen neuen Schlüssel anlegen und kopieren.
+2. Key eintragen (öffnet entschlüsselt im Editor, verschlüsselt beim Speichern):
+
+   ```bash
+   sops infrastructure/karibik/hermes/hermes-env-encrypted.env     # Zeile: REGIO_AI_API_KEY=<schluessel>
+   ```
+
+3. Push; Hermes rollt neu (config.yaml folgt dem HelmRelease). Prüfen:
+
+   ```bash
+   kubectl -n hermes exec deploy/hermes -c hermes-agent -- sh -c 'cd /opt/data && hermes chat -q "Antworte nur mit dem Namen deines Modells." --model regio-ai/kimi-k3'
+   kubectl -n hermes exec deploy/hermes -c hermes-agent -- sh -c 'cd /opt/data && hermes chat -q "Delegiere an einen Subagenten: er soll nur den Namen seines Modells zurueckgeben."'
+   ```
+
+   Im Chat `/model` öffnet die Auswahl; `/model gpt-6-luna` führt zurück zu Codex.
+
+Stolpersteine: `401` vom Endpunkt → Key fehlt oder falsch (`sops -d … | grep REGIO`), Pod neu starten nach dem
+Eintragen. `auto` wählt das Modell serverseitig – für reproduzierbare Subagenten ist ein konkretes Modell gesetzt.
+Der Org-Header `X-Sophia-Org` aus der Weboberfläche gilt nur für Downloads dort, nicht für die API.
 
 ### Egress erweitern (Rezept)
 

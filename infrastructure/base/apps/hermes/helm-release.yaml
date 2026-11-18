@@ -368,6 +368,32 @@ spec:
       plugins:
         enabled:
           - hindsight
+      # Zweiter LLM-Anbieter regio-ai (OpenAI-kompatibel, Doku 4e "Weitere Modelle"): Modelle kimi-k3, glm-5.3,
+      # deepseek-v41-flash und "auto" (Anbieter waehlt). Basis-URL aus cluster-secrets (enthaelt die Tenant-ID),
+      # Key aus hermes-secrets ueber key_env – KEIN Dollar-Klammer-Platzhalter fuer den Key, Flux wuerde ihn beim
+      # Build einsetzen und in die ConfigMap schreiben. Drei Rollen: per /model waehlbar, Fallback-Kette, Subagenten.
+      providers:
+        regio-ai:
+          base_url: ${REGIO_AI_BASE_URL}
+          key_env: REGIO_AI_API_KEY
+          api_mode: chat_completions
+          models:
+            - kimi-k3
+            - glm-5.3
+            - deepseek-v41-flash
+            - auto
+      # Faellt Codex aus (5-Stunden-Limit, Login abgelaufen, Stoerung), uebernimmt der Reihe nach kimi-k3, dann
+      # glm-5.3 fuer den laufenden Turn; die Sitzung bleibt auf Codex und kehrt zurueck, sobald es wieder antwortet.
+      fallback_model:
+        - provider: regio-ai
+          model: kimi-k3
+        - provider: regio-ai
+          model: glm-5.3
+      # Subagenten (delegate_task) auf dem guenstigen Modell: Kinder tragen den Grossteil der Tokens, die Planung
+      # bleibt beim Hauptmodell. Spart das geteilte ChatGPT-Limit (auch Hindsight haengt daran).
+      delegation:
+        provider: regio-ai
+        model: deepseek-v41-flash
       # Websuche serverseitig bei OpenAI (Responses-API-Tool web_search ueber den Codex-Transport): kein
       # API-Key, kein zusaetzlicher Egress (laeuft ueber chatgpt.com), Kosten im ChatGPT-Abo. Nur Suche;
       # das Lesen ganzer Seiten (web_extract) braucht weiterhin einen Anbieter wie Firecrawl/Tavily. Doku 4e.
