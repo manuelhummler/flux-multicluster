@@ -398,6 +398,12 @@ spec:
       runAsUser: 10000
       runAsGroup: 10000
       fsGroup: 10000
+      # Ohne diese Zeile (Default "Always") setzt das Kubelet bei JEDEM Mount rekursiv g+rw auf alle
+      # Dateien des Volumes – auch nach einem Kubelet-Neustart bei laufendem Pod. Dabei wurde
+      # gateway.sock von 0600 auf 0660 gesetzt, und die TUI verweigert den Socket
+      # (unsafe_control_permissions, siehe Troubleshooting in docs/clusters/gitops-karibik.md).
+      # OnRootMismatch: nur anfassen, wenn die Volume-Wurzel nicht schon Gruppe 10000 + setgid traegt.
+      fsGroupChangePolicy: OnRootMismatch
       seccompProfile:
         type: RuntimeDefault
     securityContext:
