@@ -1,0 +1,8 @@
+# Teilsynchronisation fuer den Sidecar "onedrive" (Key onedrive.sync_list in der ConfigMap m365-sync).
+# Sobald diese Datei existiert, ist ALLES andere im OneDrive ausgeschlossen – in beide Richtungen.
+# Syntax (abraunegg/onedrive, docs/usage.md): ein Pfad pro Zeile relativ zur OneDrive-Wurzel; fuehrender
+# Schraegstrich = an der Wurzel verankert, abschliessender = nur Ordner; "!" am Anfang schliesst aus und
+# steht VOR dem passenden Einschluss; "*" ein Pfadsegment, "**" rekursiv.
+# Jede Aenderung an dieser Datei verlangt einmalig ONEDRIVE_RESYNC=1 am Sidecar (HelmRelease), danach "0".
+# Entscheidung 2026-11-18: OneDrive hat 751 GB, gespiegelt wird vorerst nur die Bachelorarbeit.
+/Bachelorarbeit/

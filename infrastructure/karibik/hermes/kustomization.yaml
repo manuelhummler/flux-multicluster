@@ -23,6 +23,7 @@ configMapGenerator:
   - name: m365-sync
     files:
       - onedrive.config=m365/onedrive.config
+      - onedrive.sync_list=m365/onedrive.sync_list
       - office.config=m365/office.config
       - familie.config=m365/familie.config
 secretGenerator:

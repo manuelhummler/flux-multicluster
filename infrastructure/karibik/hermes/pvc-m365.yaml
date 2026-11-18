@@ -16,5 +16,8 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      # OneDrive plus Bibliothek plus Luft; Longhorn erweitert online, verkleinern geht nicht.
-      storage: 10Gi
+      # 10Gi waren am 2026-11-18 nach einer Stunde voll. Bedarf laut Nutzer: SharePoint (office + familie)
+      # komplett ~100 GB, OneDrive nur /Bachelorarbeit (sync_list), dazu Sync-DBs und Luft -> 120Gi.
+      # Longhorn erweitert online (allowVolumeExpansion), verkleinern geht nicht; die einzige Replik liegt
+      # auf barbossa-kube (920 GiB RAID-1-NVMe, >800 GiB frei).
+      storage: 120Gi

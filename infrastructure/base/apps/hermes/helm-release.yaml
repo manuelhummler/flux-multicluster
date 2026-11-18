@@ -557,8 +557,10 @@ spec:
             value: /onedrive/conf
           # Einmalig auf "1" setzen, wenn der Client nach drive_id-/sync_list-Aenderung einen --resync
           # verlangt (Exit-Code 78 im Log); danach wieder auf "0", sonst scannt jeder Start komplett neu.
+          # 2026-11-18 auf "1": onedrive.sync_list eingefuehrt (nur /Bachelorarbeit/). Nach dem Durchlauf
+          # (Log: "Performing a database consistency and integrity check" ... Monitor laeuft) zurück auf "0".
           - name: ONEDRIVE_RESYNC
-            value: "0"
+            value: "1"
         securityContext:
           runAsNonRoot: true
           runAsUser: 10000

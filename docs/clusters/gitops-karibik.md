@@ -891,7 +891,9 @@ Spiegel brauchen, lohnt ein eigener Namespace mit RWX-Volume.
   direkt mit `--confdir /onedrive/conf --syncdir /onedrive/data --monitor` auf; ein Wrapper kopiert vorher
   `<SYNC_NAME>.config` (und optional `<SYNC_NAME>.sync_list`) aus der ConfigMap in das beschreibbare `conf/`,
   weil der Client dort `refresh_token` und `items.sqlite3` ablegt.
-- Gemeinsame PVC [`hermes-m365`](../../infrastructure/karibik/hermes/pvc-m365.yaml) (10 Gi, erweiterbar) mit
+- Gemeinsame PVC [`hermes-m365`](../../infrastructure/karibik/hermes/pvc-m365.yaml) (120 Gi: SharePoint
+  `office` + `familie` komplett ≈ 100 GB laut Nutzer, OneDrive nur `Bachelorarbeit`, Rest Sync-DBs und Luft;
+  die ersten 10 Gi waren am 2026-11-18 nach einer Stunde voll; Longhorn erweitert online) mit
   StorageClass [`longhorn-cache`](../../infrastructure/karibik/hermes/storageClass.yaml): **eine Replik** und
   per `recurringJobSelector` fest in der Recurring-Job-Gruppe `no-backup`. Longhorn hängt Jobs der Gruppe
   `default` an alle Volumes *ohne* Gruppen-Label; dieses Volume bleibt damit auch außen vor, wenn später ein
@@ -970,11 +972,17 @@ läuft in `/opt/data` und ist nicht betroffen.
    Sidecar im HelmRelease auf `"1"` setzen, Reconcile, nach dem Durchlauf wieder `"0"`. Alte Inhalte vorher aus
    `<name>/data` löschen (`kubectl … exec -c <name> -- sh -c 'rm -rf /onedrive/data/* /onedrive/data/.[!.]*'`),
    sonst lädt der Client sie in die neue Bibliothek hoch.
-6. **Teilsynchronisation (optional, je Sidecar):** Datei `m365/<name>.sync_list` anlegen (ein Pfad pro Zeile
+6. **Teilsynchronisation (je Sidecar):** Datei `m365/<name>.sync_list` anlegen (ein Pfad pro Zeile
    relativ zur Laufwerkswurzel, `!`-Zeilen schließen aus, `**` rekursiv; sobald die Datei existiert, ist alles
    andere ausgeschlossen), in `kustomization.yaml` als weiteres `files:`-Element eintragen, pushen, dann einmalig
    `ONEDRIVE_RESYNC=1` am betroffenen Sidecar wie in Schritt 5. Der Wrapper löscht eine alte `sync_list` aus
-   `conf/`, wenn die ConfigMap keine mehr hat.
+   `conf/`, wenn die ConfigMap keine mehr hat. **Stand 2026-11-18:** das OneDrive hat 751 GB, die ersten
+   10 Gi der PVC waren nach einer Stunde voll. [`onedrive.sync_list`](../../infrastructure/karibik/hermes/m365/onedrive.sync_list)
+   enthält deshalb nur `/Bachelorarbeit/`; `office` und `familie` laufen ohne Liste. Bereits geladene Daten
+   außerhalb der Liste (ARCHIV, 08_Sonstiges, …) fasst der Client nach dem Resync nicht mehr an, sie belegen
+   aber weiter Platz: nach dem Resync prüfen, dass das Log keine Löschvorgänge zeigt, dann die Ordner im
+   Container löschen (`kubectl … exec -c onedrive -- rm -rf /onedrive/data/ARCHIV …`). Ausgeschlossene Pfade
+   lösen keine Online-Löschung aus; Netz ist der Papierkorb (93 Tage).
 
 **Prüfen:** `kubectl … logs deploy/hermes -c onedrive --tail=50` (bzw. `-c office`, `-c familie`: Monitor-Zyklen,
 Up-/Downloads), dann im Chat „Was liegt unter /opt/onedrive und /opt/sharepoint?“ und als Schreibtest „Lege
