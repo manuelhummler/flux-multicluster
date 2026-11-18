@@ -476,7 +476,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | GitLab | Zweigleisig: offizieller Remote-MCP `https://gitlab.com/api/v4/mcp` (Katalog-Eintrag, OAuth über das Dashboard) für Issues, Merge Requests, Pipelines; dazu `GITLAB_TOKEN` (PAT, nur `read_repository`/`write_repository`) in `hermes-secrets` für git über HTTPS, vom Init-Container in `~/.git-credentials` eingetragen | Entscheidung 2026-11-11. Es gibt kein gebündeltes GitLab-Skill und keine `glab`-CLI im Image; der MCP ersetzt die API-Seite, der PAT bleibt auf Repo-Inhalte beschränkt. |
 | Todoist | Offizieller Remote-MCP-Server `https://ai.todoist.net/mcp` aus dem Hermes-Katalog, deklarativ als `config.mcp_servers.todoist` im HelmRelease; OAuth 2.1 mit Dynamic Client Registration, Einwilligung einmalig über das Dashboard, Token auf dem Volume | Entscheidung 2026-11-11. Kein API-Token in Git/SOPS nötig, kein lokaler MCP-Prozess im Pod (nur HTTP). Scope `data:read_write` (Aufgaben, Projekte, Kommentare lesen und schreiben). |
 | Composio | Gehosteter Meta-MCP `https://connect.composio.dev/mcp` (Vorgabe von `composio.dev/hermes`), deklarativ als `config.mcp_servers.composio` im HelmRelease; OAuth 2.1 mit Dynamic Client Registration gegen `login.composio.dev`, Einwilligung einmalig über das Dashboard, Token auf dem Volume. Welche SaaS-Apps dahinter freigeschaltet sind, wird im Composio-Dashboard entschieden, nicht in Git | Entscheidung 2026-11-18, nachdem der Agent die Einrichtung selbst nicht schaffte (Egress-Sperre, siehe „Composio“ unten). Kein Katalog-Eintrag bei Hermes, kein API-Key in Git/SOPS. Composio ist ein Zwischenhändler: alles, was der Agent über Composio tut, läuft über deren Server. Deshalb dort nur Apps anbinden, für die es keinen direkten Weg gibt (Google Workspace, Todoist, GitHub, GitLab haben einen). |
-| SharePoint/OneDrive | **Spiegel im Cluster** statt API-Zugriff: zwei Sidecars `onedrive` (OneDrive des Kontos) und `sharepoint` (eine Bibliothek per `drive_id`) mit [abraunegg/onedrive](https://github.com/abraunegg/onedrive) (Image `driveone/onedrive:2.5.12-alpine`) im Hermes-Pod, Monitor-Modus in beide Richtungen, gemeinsame PVC `hermes-m365` (StorageClass `longhorn-cache`: 1 Replik, Recurring-Job-Gruppe `no-backup`), Hermes sieht die Dateien unter `/opt/onedrive` und `/opt/sharepoint`. Login je Sidecar per Device-Code-Flow gegen eine **eigene Entra-App** (Public Client), Konfiguration als ConfigMap `m365-sync` im Overlay | Entscheidung 2026-11-18. Hermes arbeitet mit lokalen Dateien (grep, Python, pandoc) deutlich besser als über Graph-Tool-Calls; der Client verhält sich wie der Desktop-OneDrive (inotify-Upload, Deltas alle 5 min). Kein Composio: Geschäftsdokumente nicht durch einen Zwischenhändler. Kein `rclone mount` (FUSE unter PSS `restricted` unmöglich), kein `rclone bisync` (Aufsatz statt Client). Keine zusätzliche Sicherung: OneDrive wird bereits gesichert, der Spiegel baut sich neu auf. Kein Löschschutz möglich (`no_remote_delete` gibt es nur upload-only) – Papierkorb in SharePoint ist das Netz. |
+| SharePoint/OneDrive | **Spiegel im Cluster** statt API-Zugriff: drei Sidecars `onedrive` (OneDrive des Kontos), `office` (Site `office`, Bibliothek „Dokumente“) und `familie` (Site `familie`, Bibliothek „Dokumente“) mit [abraunegg/onedrive](https://github.com/abraunegg/onedrive) (Image `driveone/onedrive:2.5.12-alpine`) im Hermes-Pod, Monitor-Modus in beide Richtungen, gemeinsame PVC `hermes-m365` (StorageClass `longhorn-cache`: 1 Replik, Recurring-Job-Gruppe `no-backup`), Hermes sieht die Dateien unter `/opt/onedrive`, `/opt/sharepoint/office` und `/opt/sharepoint/familie`. Login je Sidecar per Device-Code-Flow gegen die **eigene Entra-App** `hermes-onedrive` (Public Client), Konfiguration als ConfigMap `m365-sync` im Overlay | Entscheidung 2026-11-18. Hermes arbeitet mit lokalen Dateien (grep, Python, pandoc) deutlich besser als über Graph-Tool-Calls; der Client verhält sich wie der Desktop-OneDrive (inotify-Upload, Deltas alle 5 min). Kein Composio: Geschäftsdokumente nicht durch einen Zwischenhändler. Kein `rclone mount` (FUSE unter PSS `restricted` unmöglich), kein `rclone bisync` (Aufsatz statt Client). Keine zusätzliche Sicherung: OneDrive wird bereits gesichert, der Spiegel baut sich neu auf. Kein Löschschutz möglich (`no_remote_delete` gibt es nur upload-only) – Papierkorb in SharePoint ist das Netz. |
 | Google Workspace | Skill `google-workspace` mit eigenem OAuth-Desktop-Client; Client-Secret als SOPS-Secret auf `/opt/data/google_client_secret.json` gemountet, Token `google_token.json` auf dem Volume | Entscheidung 2026-11-11. Volle Scopes (Gmail senden/ändern, Drive, Calendar, Sheets, Docs, Contacts) – Inhalte gehen beim Verarbeiten an OpenAI. Nur-Mail-Alternative wäre das `himalaya`-Skill mit App-Passwort. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
 
@@ -857,7 +857,7 @@ Telegram-Chat „Welche Apps sind in Composio verbunden?“. Bei Hängern
 `hubble observe --from-pod hermes/ --verdict DROPPED` – taucht dort ein dritter `*.composio.dev`-Host auf, die
 Policy ergänzen (Stand 2026-11-18 sind es nur die zwei oben).
 
-### SharePoint/OneDrive – Spiegel im Cluster (Sidecars `onedrive` und `sharepoint`)
+### SharePoint/OneDrive – Spiegel im Cluster (Sidecars `onedrive`, `office`, `familie`)
 
 **Warum ein Spiegel:** Hermes soll Dokumente lesen, durchsuchen, auswerten und auch schreiben. Über die Graph-API
 wäre jeder Dateizugriff ein Tool-Call; mit lokalen Dateien nutzt der Agent sein Terminal (grep, Python, pandoc).
@@ -868,11 +868,13 @@ Sync-Client wie OneDrive auf dem Desktop: beide Richtungen, lokale Änderungen p
 Online-Änderungen per Delta alle 5 Minuten, Konflikte ohne Datenverlust (lokale Kopie wird umbenannt, Online-
 Version geholt). Kein FUSE, kein root. Entscheidung 2026-11-18.
 
-**Warum zwei Instanzen:** ein Client synchronisiert genau ein Laufwerk, entweder das OneDrive des Kontos oder
-eine SharePoint-Bibliothek (`drive_id`). Die Alternative, die Bibliothek als Verknüpfung in „Meine Dateien“
-einzuhängen und mit `sync_business_shared_items` über eine Instanz zu holen, wurde verworfen (Entscheidung
-2026-11-18, „Weg 2“): zwei Sidecars sind zwei Tokens, zwei Logins, aber auch zwei unabhängige Zustände, und das
-Bibliotheks-Konto kann ein anderes sein als das OneDrive-Konto.
+**Warum drei Instanzen:** ein Client synchronisiert genau ein Laufwerk, entweder das OneDrive des Kontos oder
+eine SharePoint-Bibliothek (`drive_id`). Gewünscht sind das OneDrive und die Bibliotheken „Dokumente“ der Sites
+`office` und `familie`. Die Alternative, Bibliotheken als Verknüpfung in „Meine Dateien“ einzuhängen und mit
+`sync_business_shared_items` über eine Instanz zu holen, wurde verworfen (Entscheidung 2026-11-18, „Weg 2“):
+mehrere Sidecars sind mehrere Tokens und Logins, aber auch unabhängige Zustände, und das Konto je Bibliothek
+kann ein anderes sein. Eine weitere Bibliothek = Sidecar-Block kopieren, `<name>.config` anlegen und in der
+ConfigMap eintragen, Verzeichnis in `prepare-home`, Mount bei `hermes-agent`.
 
 **Warum Sidecar und kein eigener Namespace:** PVCs sind namespace-gebunden, und Hermes muss dieselben Dateien
 sehen. Ein eigenständiger Sync-Dienst müsste den Spiegel per Longhorn-RWX (NFS-Share-Manager) teilen – über NFS
@@ -883,7 +885,7 @@ Spiegel brauchen, lohnt ein eigener Namespace mit RWX-Volume.
 
 **Aufbau:**
 
-- Zwei Sidecars `onedrive` und `sharepoint` im Hermes-Pod (`extraContainers` im HelmRelease, bis auf Name,
+- Drei Sidecars `onedrive`, `office`, `familie` im Hermes-Pod (`extraContainers` im HelmRelease, bis auf Name,
   `SYNC_NAME` und `subPath` identisch), Image `driveone/onedrive:2.5.12-alpine` gepinnt, UID 10000 wie Hermes,
   read-only Rootfs, `/tmp` als tmpfs. Der Docker-Entrypoint erkennt den Nicht-root-Start und ruft den Client
   direkt mit `--confdir /onedrive/conf --syncdir /onedrive/data --monitor` auf; ein Wrapper kopiert vorher
@@ -894,26 +896,27 @@ Spiegel brauchen, lohnt ein eigener Namespace mit RWX-Volume.
   per `recurringJobSelector` fest in der Recurring-Job-Gruppe `no-backup`. Longhorn hängt Jobs der Gruppe
   `default` an alle Volumes *ohne* Gruppen-Label; dieses Volume bleibt damit auch außen vor, wenn später ein
   Backup-Job über die default-Gruppe kommt. Microsoft 365 wird bereits gesichert, der Spiegel ist Cache.
-  Unterverzeichnisse `onedrive/{data,conf}` und `sharepoint/{data,conf}` legt der Init-Container `prepare-home`
-  an (Longhorn-Wurzel gehört root, gleiche Lösung wie bei `/opt/data`).
-- Hermes sieht nur die `data/`-Verzeichnisse: **`/opt/onedrive`** und **`/opt/sharepoint`** (read-write), nicht
-  `conf/` mit den Tokens. Bewusst außerhalb von `HERMES_HOME`, damit die Besitzer-Prüfung von Hermes nichts
-  davon merkt.
-- Konfiguration: [`m365/onedrive.config`](../../infrastructure/karibik/hermes/m365/onedrive.config) und
-  [`m365/sharepoint.config`](../../infrastructure/karibik/hermes/m365/sharepoint.config) im Overlay → ConfigMap
-  `m365-sync` (keine Secrets: App-ID und Tenant-ID eines Public Clients sind keine Geheimnisse). Gesetzt:
-  `use_device_auth`, `application_id`, `azure_tenant_id`, `drive_id` (nur sharepoint), `skip_dotfiles`,
+  Unterverzeichnisse `<name>/data` und `<name>/conf` legt der Init-Container `prepare-home` an
+  (Longhorn-Wurzel gehört root, gleiche Lösung wie bei `/opt/data`).
+- Hermes sieht nur die `data/`-Verzeichnisse: **`/opt/onedrive`**, **`/opt/sharepoint/office`**,
+  **`/opt/sharepoint/familie`** (read-write), nicht `conf/` mit den Tokens. Bewusst außerhalb von `HERMES_HOME`,
+  damit die Besitzer-Prüfung von Hermes nichts davon merkt.
+- Konfiguration: [`m365/onedrive.config`](../../infrastructure/karibik/hermes/m365/onedrive.config),
+  [`m365/office.config`](../../infrastructure/karibik/hermes/m365/office.config) und
+  [`m365/familie.config`](../../infrastructure/karibik/hermes/m365/familie.config) im Overlay → ConfigMap
+  `m365-sync` (keine Secrets: App-ID, Tenant-ID und `drive_id` sind keine Geheimnisse). Gesetzt:
+  `use_device_auth`, `application_id`, `azure_tenant_id`, `drive_id` (office, familie), `skip_dotfiles`,
   `disable_upload_validation` (SharePoint „bereichert“ Office-Dateien nach dem Upload mit Metadaten, ohne die
   Option lädt der Client sie als „geändert“ wieder herunter), `monitor_interval 300` (Minimum des Clients),
   `monitor_fullscan_frequency 12`.
 - Egress-Policy `allow-egress-to-microsoft-365`: `login.microsoftonline.com`, `graph.microsoft.com`,
-  `*.sharepoint.com` (Dateiinhalte liegen auf `<tenant>.sharepoint.com` bzw. `<tenant>-my.sharepoint.com`).
-  Gilt für den ganzen Pod, also auch für den Agenten. inotify auf barbossa-kube: 518 513 Watches, 128
-  Instanzen (geprüft 2026-11-18, Kernel 7.0) – zwei Clients teilen sich das Kontingent der UID 10000.
+  `*.sharepoint.com` (Tenant-Hosts: `its2morrow.sharepoint.com` für die Sites, `its2morrow-my.sharepoint.com`
+  für OneDrive). Gilt für den ganzen Pod, also auch für den Agenten. inotify auf barbossa-kube: 518 513 Watches,
+  128 Instanzen (geprüft 2026-11-18, Kernel 7.0) – drei Clients teilen sich das Kontingent der UID 10000.
 
 **Kein Löschschutz:** `no_remote_delete` kennt der Client nur zusammen mit `--upload-only`. Bidirektional heißt:
-löscht der Agent eine Datei unter `/opt/onedrive` oder `/opt/sharepoint`, ist sie online im Papierkorb
-(93 Tage). Wer das nicht will, nimmt `download_only` (Lesen) plus einen expliziten Rückweg für einzelne Dateien.
+löscht der Agent eine Datei unter einem der drei Pfade, ist sie online im Papierkorb (93 Tage). Wer das nicht
+will, nimmt `download_only` (Lesen) plus einen expliziten Rückweg für einzelne Dateien.
 
 **Einrichtung (einmalig):**
 
@@ -924,44 +927,48 @@ löscht der Agent eine Datei unter `/opt/onedrive` oder `/opt/sharepoint`, ist s
    erwartet beide, sonst `AADSTS50011`), und **„Öffentliche Clientflows zulassen“ = Ja** (ohne das kein
    Device-Code). Unter *API-Berechtigungen* (Microsoft Graph, delegiert): `Files.ReadWrite`,
    `Files.ReadWrite.All`, `Sites.ReadWrite.All`, `offline_access`; dann „Administratorzustimmung erteilen“.
-   Kein Client-Secret anlegen – es ist ein Public Client. Eine App reicht für beide Sidecars.
+   Kein Client-Secret anlegen – es ist ein Public Client. Eine App reicht für alle Sidecars.
    **Erledigt 2026-11-18** per Azure-CLI (`az ad app create --sign-in-audience AzureADMyOrg
    --is-fallback-public-client true --public-client-redirect-uris …`, `az ad sp create`,
    `az ad app permission admin-consent`): App `hermes-onedrive`, Anwendungs-ID
    `08d2c8df-9de2-4ddb-8328-eed94f794100`, Tenant „Hummler GbR“ `7804793a-7aea-4b72-af44-80d502e33d8d`,
    Grant `AllPrincipals` mit allen vier Scopes. Die Zustimmung schlug direkt nach dem Anlegen einmal mit
    „application … has been removed“ fehl (Replikationsverzug), beim zweiten Versuch nach ~1 min ging sie durch.
-2. `application_id` (Anwendungs-ID) und `azure_tenant_id` (Verzeichnis-ID) in **beide** Config-Dateien
-   eintragen (erledigt 2026-11-18). `drive_id` in `sharepoint.config` bleibt vorerst `REPLACE_ME` (Schritt 5).
+2. **Bibliotheken bestimmen:** die `drive_id` ist die Graph-Drive-ID (`b!…`). Ohne Sidecar-Login per Graph:
+   `az rest --url "https://graph.microsoft.com/v1.0/sites/its2morrow.sharepoint.com:/sites/<site>:/drives"`
+   (die Azure-CLI darf Sites per Pfad lesen, aber nicht per Suche; `/sites?search=*` braucht ein Token der
+   eigenen App über den Device-Code-Flow – so am 2026-11-18 gemacht, Skript lag nur im Scratchpad). Im Pod geht
+   später auch `onedrive --confdir /onedrive/conf --get-sharepoint-drive-id '<Site-Name>'`. **Erledigt
+   2026-11-18:** `office` → Bibliothek „Dokumente“ (`…/sites/office/Freigegebene Dokumente`; die zweite
+   Bibliothek „Agent-Ressourcen“ bleibt draußen), `familie` → „Dokumente“ (`…/sites/familie/Freigegebene
+   Dokumente`; die Site fehlte in der Suche trotz Besitzer-Rolle – Suchindex, Site vom 2026-10-20). IDs stehen
+   in `office.config` und `familie.config`, App- und Tenant-ID in allen drei Dateien.
 3. Pushen, Reconcile (`flux --context karibik reconcile ks hermes --with-source`). Der Pod startet neu mit
-   drei Containern; Hermes selbst wartet nicht auf die Sidecars.
+   vier Containern; Hermes selbst wartet nicht auf die Sidecars.
 4. **Device-Login, je Sidecar einmal:** `kubectl --context karibik -n hermes logs -f deploy/hermes -c onedrive`
    zeigt URL (`https://microsoft.com/devicelogin`) und Code, ca. 15 Minuten gültig. Mit dem M365-Konto
-   anmelden, dessen OneDrive Hermes bekommen soll. Dasselbe mit `-c sharepoint` und dem Konto, das die
-   Bibliothek sehen darf (kann dasselbe sein). Danach schreibt der Client `refresh_token` nach `conf/` und
+   anmelden, dessen OneDrive Hermes bekommen soll. Dasselbe mit `-c office` und `-c familie` (Konto muss die
+   jeweilige Site sehen dürfen; kann dasselbe sein). Danach schreibt der Client `refresh_token` nach `conf/` und
    beginnt den ersten Abgleich (Fortschritt im Log). Läuft ein Code ab, beendet sich der Container, Kubernetes
-   startet ihn neu, neuer Code im Log. Solange `drive_id` in `sharepoint.config` fehlt, spiegelt der
-   `sharepoint`-Sidecar das OneDrive ein zweites Mal – deshalb Schritt 5 direkt anschließen.
-5. **Bibliothek wählen:** `kubectl … exec deploy/hermes -c sharepoint -- onedrive --confdir /onedrive/conf
-   --get-sharepoint-drive-id '<Site-Name>'` druckt Site, Bibliothek und `drive_id`. In `sharepoint.config`
-   eintragen, pushen, dann einmalig `ONEDRIVE_RESYNC` am `sharepoint`-Sidecar im HelmRelease auf `"1"` setzen,
-   Reconcile, nach dem Durchlauf wieder `"0"`. Hat der Client vorher schon OneDrive-Inhalte nach
-   `sharepoint/data` geladen, diese vor dem Resync löschen (`kubectl … exec -c sharepoint -- sh -c 'rm -rf
-   /onedrive/data/* /onedrive/data/.[!.]*'`), sonst lädt er sie in die Bibliothek hoch.
+   startet ihn neu, neuer Code im Log.
+5. **`drive_id` später ändern:** neue ID eintragen, pushen, dann einmalig `ONEDRIVE_RESYNC` am betroffenen
+   Sidecar im HelmRelease auf `"1"` setzen, Reconcile, nach dem Durchlauf wieder `"0"`. Alte Inhalte vorher aus
+   `<name>/data` löschen (`kubectl … exec -c <name> -- sh -c 'rm -rf /onedrive/data/* /onedrive/data/.[!.]*'`),
+   sonst lädt der Client sie in die neue Bibliothek hoch.
 6. **Teilsynchronisation (optional, je Sidecar):** Datei `m365/<name>.sync_list` anlegen (ein Pfad pro Zeile
    relativ zur Laufwerkswurzel, `!`-Zeilen schließen aus, `**` rekursiv; sobald die Datei existiert, ist alles
    andere ausgeschlossen), in `kustomization.yaml` als weiteres `files:`-Element eintragen, pushen, dann einmalig
    `ONEDRIVE_RESYNC=1` am betroffenen Sidecar wie in Schritt 5. Der Wrapper löscht eine alte `sync_list` aus
    `conf/`, wenn die ConfigMap keine mehr hat.
 
-**Prüfen:** `kubectl … logs deploy/hermes -c onedrive --tail=50` bzw. `-c sharepoint` (Monitor-Zyklen,
+**Prüfen:** `kubectl … logs deploy/hermes -c onedrive --tail=50` (bzw. `-c office`, `-c familie`: Monitor-Zyklen,
 Up-/Downloads), dann im Chat „Was liegt unter /opt/onedrive und /opt/sharepoint?“ und als Schreibtest „Lege
-unter /opt/sharepoint/hermes-test.txt eine Datei mit dem heutigen Datum an“ – sie muss binnen Sekunden in der
-Bibliothek erscheinen. Hänger: `hubble observe --from-pod hermes/ --verdict DROPPED`; taucht ein weiterer
+unter /opt/sharepoint/familie/hermes-test.txt eine Datei mit dem heutigen Datum an“ – sie muss binnen Sekunden
+in der Bibliothek erscheinen. Hänger: `hubble observe --from-pod hermes/ --verdict DROPPED`; taucht ein weiterer
 Microsoft-Host auf, die Policy ergänzen. Exit-Code 78 eines Sidecars = Client verlangt `--resync` (Schritt 5).
 
 **Trennen:** `<name>/conf/refresh_token` löschen (oder `ONEDRIVE_LOGOUT=1` einmalig am Sidecar) und in Entra
-die App löschen. Volume-Verlust ist harmlos: Schritt 4 und 5 wiederholen, der Spiegel baut sich neu auf.
+die App löschen. Volume-Verlust ist harmlos: Schritt 4 wiederholen, der Spiegel baut sich neu auf.
 
 ### Egress erweitern (Rezept)
 

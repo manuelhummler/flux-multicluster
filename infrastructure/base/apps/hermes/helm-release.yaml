@@ -77,8 +77,8 @@ spec:
                             mountPath: /opt/data
                             subPath: home
           # Muss VOR seed-config laufen (sonst legt kubelet das subPath-Verzeichnis als root an): JSON-Patch an Index 0.
-          # Legt ausserdem je data/ und conf/ fuer die Sidecars onedrive und sharepoint auf der M365-PVC an (gleiche
-          # Wurzel-gehoert-root-Situation; Volume "m365" kommt aus extraVolumes).
+          # Legt ausserdem je data/ und conf/ fuer die Sidecars onedrive, office und familie auf der M365-PVC an
+          # (gleiche Wurzel-gehoert-root-Situation; Volume "m365" kommt aus extraVolumes).
           - target:
               kind: Deployment
               name: hermes
@@ -88,7 +88,7 @@ spec:
                 value:
                   name: prepare-home
                   image: busybox:1.37
-                  command: ["sh", "-c", "set -e; for d in /pvc/home /pvc-m365/onedrive/data /pvc-m365/onedrive/conf /pvc-m365/sharepoint/data /pvc-m365/sharepoint/conf; do mkdir -p $d && chmod 700 $d; done; ls -ldn /pvc/home /pvc-m365/*/*"]
+                  command: ["sh", "-c", "set -e; for n in onedrive office familie; do for d in /pvc-m365/$n/data /pvc-m365/$n/conf; do mkdir -p $d && chmod 700 $d; done; done; mkdir -p /pvc/home && chmod 700 /pvc/home; ls -ldn /pvc/home /pvc-m365/*/*"]
                   securityContext:
                     runAsNonRoot: true
                     runAsUser: 10000
@@ -442,7 +442,7 @@ spec:
         secret:
           secretName: hermes-google-client
           defaultMode: 0440
-      # OneDrive-/SharePoint-Spiegel (Sidecars "onedrive" und "sharepoint" unten, Doku 4e "SharePoint/OneDrive"):
+      # OneDrive-/SharePoint-Spiegel (Sidecars "onedrive", "office", "familie" unten, Doku 4e "SharePoint/OneDrive"):
       # gemeinsame Cache-PVC aus dem Overlay (longhorn-cache: 1 Replik, keine Backup-Gruppe – Microsoft 365 ist
       # die Wahrheit und wird dort gesichert). Pro Sidecar <name>/data (Dateien) und <name>/conf (Token, Sync-DB),
       # angelegt von prepare-home.
@@ -474,8 +474,11 @@ spec:
         mountPath: /opt/onedrive
         subPath: onedrive/data
       - name: m365
-        mountPath: /opt/sharepoint
-        subPath: sharepoint/data
+        mountPath: /opt/sharepoint/office
+        subPath: office/data
+      - name: m365
+        mountPath: /opt/sharepoint/familie
+        subPath: familie/data
     team:
       sharedVolume:
         permissions:
@@ -483,16 +486,18 @@ spec:
 
     # Sidecars: Linux-OneDrive-Client (abraunegg/onedrive) im Monitor-Modus – verhaelt sich wie der OneDrive-
     # Client auf dem Desktop: beide Richtungen, lokale Aenderungen per inotify sofort, Online-Aenderungen alle
-    # 5 Minuten. Ein Client synchronisiert genau ein Laufwerk, deshalb zwei Instanzen: "onedrive" (das OneDrive
-    # des Kontos) und "sharepoint" (eine Dokumentbibliothek per drive_id), je eigenes conf/ (Token, Sync-DB),
-    # eigener Device-Login, eigener Mount bei Hermes (/opt/onedrive, /opt/sharepoint). Beide Bloecke sind bis
-    # auf Name, SYNC_NAME und subPath identisch.
+    # 5 Minuten. Ein Client synchronisiert genau ein Laufwerk, deshalb drei Instanzen: "onedrive" (das OneDrive
+    # des Kontos), "office" (Site office, Bibliothek Dokumente) und "familie" (Site familie, Bibliothek
+    # Dokumente), je per drive_id in <name>.config, je eigenes conf/ (Token, Sync-DB), eigener Device-Login,
+    # eigener Mount bei Hermes (/opt/onedrive, /opt/sharepoint/office, /opt/sharepoint/familie). Die Bloecke
+    # sind bis auf Name, SYNC_NAME und subPath identisch; eine weitere Bibliothek = Block kopieren, Config-Key
+    # in der ConfigMap, Verzeichnis in prepare-home, Mount bei hermes-agent.
     # Kein FUSE (ginge unter PSS restricted nicht), kein root: der Entrypoint erkennt den Nicht-root-Start und
     # ruft den Client direkt mit --confdir /onedrive/conf --syncdir /onedrive/data --monitor auf. Vorher kopiert
     # ein Wrapper <SYNC_NAME>.config (und optional <SYNC_NAME>.sync_list) aus der ConfigMap in das
     # beschreibbare conf/ (der Client will sein confdir beschreiben: refresh_token, items.sqlite3).
     # Login: Device-Code-Flow gegen die eigene Entra-App (use_device_auth in der config) – URL + Code stehen im
-    # Log des jeweiligen Sidecars (`kubectl logs -c onedrive` bzw. `-c sharepoint`), Rezept in Doku 4e.
+    # Log des jeweiligen Sidecars (`kubectl logs -c onedrive` / `-c office` / `-c familie`), Rezept in Doku 4e.
     # Egress: allow-egress-to-microsoft-365 (login.microsoftonline.com, graph.microsoft.com, *.sharepoint.com).
     # Version gepinnt; Renovate (kubernetes-Manager auf infrastructure/**) sollte die image:-Zeilen sehen.
     extraContainers:
@@ -550,7 +555,7 @@ spec:
             readOnly: true
           - name: m365-tmp
             mountPath: /tmp
-      - name: sharepoint
+      - name: office
         image: driveone/onedrive:2.5.12-alpine
         imagePullPolicy: IfNotPresent
         command:
@@ -568,7 +573,7 @@ spec:
             exec /entrypoint.sh
         env:
           - name: SYNC_NAME
-            value: sharepoint
+            value: office
           - name: HOME
             value: /onedrive/conf
           - name: ONEDRIVE_RESYNC
@@ -593,10 +598,62 @@ spec:
         volumeMounts:
           - name: m365
             mountPath: /onedrive/data
-            subPath: sharepoint/data
+            subPath: office/data
           - name: m365
             mountPath: /onedrive/conf
-            subPath: sharepoint/conf
+            subPath: office/conf
+          - name: m365-config
+            mountPath: /onedrive/config-src
+            readOnly: true
+          - name: m365-tmp
+            mountPath: /tmp
+      - name: familie
+        image: driveone/onedrive:2.5.12-alpine
+        imagePullPolicy: IfNotPresent
+        command:
+          - sh
+          - -c
+          - |
+            set -eu
+            cp "/onedrive/config-src/$SYNC_NAME.config" /onedrive/conf/config
+            if [ -f "/onedrive/config-src/$SYNC_NAME.sync_list" ]; then
+              cp "/onedrive/config-src/$SYNC_NAME.sync_list" /onedrive/conf/sync_list
+            else
+              rm -f /onedrive/conf/sync_list
+            fi
+            echo "[$SYNC_NAME] Konfiguration nach /onedrive/conf kopiert, starte Monitor"
+            exec /entrypoint.sh
+        env:
+          - name: SYNC_NAME
+            value: familie
+          - name: HOME
+            value: /onedrive/conf
+          - name: ONEDRIVE_RESYNC
+            value: "0"
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10000
+          runAsGroup: 10000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+          seccompProfile:
+            type: RuntimeDefault
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: "1"
+            memory: 768Mi
+        volumeMounts:
+          - name: m365
+            mountPath: /onedrive/data
+            subPath: familie/data
+          - name: m365
+            mountPath: /onedrive/conf
+            subPath: familie/conf
           - name: m365-config
             mountPath: /onedrive/config-src
             readOnly: true
