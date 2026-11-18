@@ -48,7 +48,7 @@ Cluster-Secrets.
 | **0** | Fundament: Secrets/SOPS, cert-manager, cluster-issuer, metrics-server, longhorn, Cilium-Adoption | **erledigt 2026-11-03** |
 | 1 | Datenschicht: CloudNative-PG (statt Zalando), MariaDB Galera; **kein MinIO** (Backups → DigitalOcean) | **erledigt 2026-11-03** (Daten ziehen pro App in Phase 2/3 um) |
 | 2 | Plattform/Auth: keycloak (**Operator statt Bitnami**, siehe 4c), oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | **in Arbeit** – keycloak Test-Rollout erledigt 2026-11-08 (läuft parallel auf `auth.karibik.hummler.com`), oauth2-proxy/Monitoring offen |
-| 3 | Apps: vaultwarden, kimai, dtrack, apicurio, fest-der-demokratie, minecraft, hopps-* (juno-care am 2026-11-08 ersatzlos entfernt, kein Umzug) | offen |
+| 3 | Apps: vaultwarden, kimai, dtrack, apicurio, minecraft, hopps-* (juno-care am 2026-11-08 ersatzlos entfernt, kein Umzug; fest-der-demokratie am 2026-11-18 ersatzlos entfernt – `fest-der-demokratie.de` zeigte schon auf einen fremden Server `23.88.102.169`, captain-kube bekam keinen Traffic mehr) | offen |
 | neu | **Hermes Agent** (KI-Harness) unter `hermes.hummler.com`: keine Migration, Neuinstallation nur auf karibik (siehe 4e) | **läuft seit 2026-11-08**; offen: **Backup der PVC**, Egress erweitern, OIDC |
 | neu | **Renovate** (self-hosted) als CronJobs für GitHub `flux-multicluster` und GitLab `hummler-gbr/pro-makler`, ersetzt die Mend-App (siehe 4f) | **vorbereitet 2026-11-11**, Rollout offen |
 | 4 | captain-kube leerräumen & als 3. Node rejoinen; **danach** Control-Plane auf private IPs (siehe 4d) | offen |
@@ -1150,7 +1150,7 @@ aus demselben Chart, weil Renovate pro Lauf nur eine Plattform bedient:
 | Betriebsmodell | CronJob, **kein** Webhook/Ingress | Kein öffentlicher Endpunkt nötig. Nachteil: Reaktion auf Checkboxen im Dependency-Dashboard/MR erst beim nächsten Lauf (≤ 1 h). |
 | Repos | **feste Liste** (`repositories`), kein `autodiscover` | Nichts passiert ungeplant, auch wenn das Token mehr Repos sehen kann. Neues Repo = Eintrag im HelmRelease. |
 | Konfiguration | Global (Admin) im HelmRelease als `config.js`, Repo-Regeln bleiben im jeweiligen Repo (`renovate.json`) | `config.js` liest Tokens aus Umgebungsvariablen – nichts Geheimes in der ConfigMap. `requireConfig: required` + `onboarding: true`: ohne Repo-Config gibt es nur einen Onboarding-PR/-MR. |
-| Secrets | Je Instanz eine SOPS-Datei im Overlay → Secret → `envFrom` | Muster wie hermes. Kein Registry-Token: das private ghcr-Image von fest-der-demokratie ist von Renovate ausgenommen. |
+| Secrets | Je Instanz eine SOPS-Datei im Overlay → Secret → `envFrom` | Muster wie hermes. Kein Registry-Token nötig (keine privaten Images im Repo). |
 | Commits (GitHub) | `platformCommit: enabled` | Commits über die API, von GitHub als „Verified“ signiert, Autor ist der Token-Besitzer. |
 | Egress | Entity `world` auf TCP 443, sonst default-deny | Renovate fragt jede Registry, jedes Helm-Repo und jede Paketquelle der Repos ab und lädt Tools nach – eine FQDN-Allowlist würde bei jeder neuen Abhängigkeit still brechen. `world` schließt kube-apiserver und Cluster-Pods aus. |
 | Pod Security | Namespace `renovate` mit PSS `restricted`, UID 12021 (User des Images), kein SA-Token (postRenderer) | Root-FS bleibt beschreibbar: containerbase installiert node/helm/… zur Laufzeit. |
@@ -1183,10 +1183,9 @@ PAT gilt zwar für alle Repos des Bots, der hat aber nur dieses eine. `workflow`
 Lege das Repo später in eine Organisation, geht auch ein fine-grained PAT des Bots (Contents, Pull requests,
 Issues, Workflows: Read and write; Commit statuses, Checks: Read).
 
-**Kein GHCR-Token** (Entscheidung 2026-11-18): Die Mend-App hatte einen Lese-Zugang für das private Image
-`ghcr.io/open-project-e-v/fest-der-demokratie` (Account `blackwolfk-9`, kein Zugriff mehr). Der self-hosted
-Renovate schlägt das Image nicht nach (`enabled: false` in `renovate.json`); die frühere Automerge-Regel
-dafür ist entfallen. Die App läuft nur auf captain-kube.
+**Kein GHCR-Token** (Entscheidung 2026-11-18): Die Mend-App hatte einen Lese-Zugang (Account `blackwolfk-9`)
+für das private Image `ghcr.io/open-project-e-v/fest-der-demokratie`. Die App ist samt Registry-Regel und
+Automerge-Regel aus dem Repo entfernt (siehe Phase 3), es gibt keine privaten Images mehr.
 
 **GitLab** (`RENOVATE_TOKEN` der Instanz `renovate-gitlab`): Personal Access Token mit `api`, `read_user`,
 `write_repository` eines Users, der in `hummler-gbr/pro-makler` mindestens *Developer* ist (Project/Group

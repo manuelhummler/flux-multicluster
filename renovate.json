@@ -14,11 +14,6 @@
   },
   "packageRules": [
     {
-      "description": "fest-der-demokratie: privates Image auf ghcr.io (nur captain-kube), der self-hosted Renovate hat keinen Registry-Zugang",
-      "matchPackageNames": ["ghcr.io/open-project-e-v/fest-der-demokratie"],
-      "enabled": false
-    },
-    {
       "description": "Self-hosted Renovate auf karibik: das Chart erscheint mehrmals taeglich, Bumps nur einmal pro Woche",
       "matchManagers": ["flux"],
       "matchDepNames": ["renovate"],
