@@ -7,8 +7,23 @@ resources:
   # Google-Workspace-Skill: OAuth-Client (Desktop-App) aus der Google Cloud Console, wird als Datei
   # nach /opt/data/google_client_secret.json gemountet (HelmRelease extraVolumes/extraVolumeMounts).
   - google-client-secret-encrypted.yaml
+  # OneDrive-/SharePoint-Spiegel (Sidecars onedrive + sharepoint im Hermes-Pod, Doku 4e "SharePoint/OneDrive"):
+  # StorageClass mit 1 Replik ohne Backup-Gruppe und die gemeinsame Cache-PVC. Das HelmRelease (Base) haengt
+  # beides ein.
+  - storageClass.yaml
+  - pvc-m365.yaml
 generatorOptions:
   disableNameSuffixHash: true
+configMapGenerator:
+  # Konfiguration der beiden OneDrive-Clients, ein Key pro Sidecar: <name>.config (App-ID, Tenant, drive_id,
+  # Optionen) und optional <name>.sync_list (Teilsynchronisation; Datei unter m365/ anlegen und hier als
+  # weitere Zeile eintragen – jede Aenderung daran verlangt einmalig ONEDRIVE_RESYNC=1 am betroffenen
+  # Sidecar, Rezept in der Doku). Keine Secrets darin. Ohne Suffix-Hash: die Sidecars lesen die Dateien nur
+  # beim Start, Aenderung = rollout restart.
+  - name: m365-sync
+    files:
+      - onedrive.config=m365/onedrive.config
+      - sharepoint.config=m365/sharepoint.config
 secretGenerator:
   # API-Key, Dashboard-Login, Telegram: alle Keys werden 1:1 Umgebungsvariablen im Pod (extraEnvFrom).
   # Name bewusst NICHT "hermes-env": so heisst das (leere) Env-Secret, das das Chart selbst rendert.

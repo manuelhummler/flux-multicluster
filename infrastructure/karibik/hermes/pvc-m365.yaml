@@ -1,0 +1,20 @@
+# Spiegel von OneDrive und einer SharePoint-Bibliothek fuer Hermes (Sidecars "onedrive" und "sharepoint" im
+# Hermes-Pod, Doku 4e "SharePoint/OneDrive"). Bewusst eine eigene PVC statt der Hermes-PVC: Inhalt ist ein
+# Cache (Microsoft 365 ist die Wahrheit und wird dort schon gesichert), daher longhorn-cache (1 Replik, keine
+# Backup-Gruppe). Ein Unterverzeichnis pro Sidecar, darin:
+#   <name>/data/  die synchronisierten Dateien (Hermes: /opt/<name>, Sidecar: /onedrive/data)
+#   <name>/conf/  Zustand des Clients: refresh_token, items.sqlite3 (nur der jeweilige Sidecar sieht sie)
+# Alle legt der Init-Container prepare-home als UID 10000 an (Longhorn-Wurzel gehoert root).
+# Nicht von Helm verwaltet: Flux loescht die PVC beim Entfernen aus Git – der Spiegel baut sich neu auf.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hermes-m365
+spec:
+  storageClassName: longhorn-cache
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # OneDrive plus Bibliothek plus Luft; Longhorn erweitert online, verkleinern geht nicht.
+      storage: 10Gi

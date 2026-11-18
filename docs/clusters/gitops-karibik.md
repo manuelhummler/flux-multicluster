@@ -467,7 +467,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | LLM-Provider | `openai-codex`: das ChatGPT-Plus-Abo per **Codex-OAuth** (Device-Code-Login beim Pod-Start, Init-Container `auth-device-login`), Modell `gpt-6-luna` | Entscheidung 2026-11-08 trotz Vorbehalten (siehe „Vorbehalte Codex-OAuth“ unten): kein zusätzlicher API-Key, Kosten im Abo. Das Plus-Abo enthält **keinen** API-Zugang, die Alternative `openai-api` mit Platform-Key steht unten. |
 | Dashboard-Login | Hermes-eigene **Basic-Auth** (`HERMES_DASHBOARD_BASIC_AUTH_*`), später **OIDC gegen Keycloak** | Hermes erzwingt bei Bind auf 0.0.0.0 eine eigene Auth („fails closed“); kein oauth2-proxy nötig (den gibt es auf karibik noch nicht). OIDC erst nach dem Keycloak-Cutover, sonst ändert sich die Issuer-URL. |
 | Terminal-Backend | `local` – der Agent führt Shell-Befehle **im eigenen Pod** aus | `docker` braucht einen Daemon/Socket (im Cluster nicht unterstützt). Der Pod ist die Sandbox: `restricted`, read-only Rootfs, kein ServiceAccount-Token, Cilium default-deny. |
-| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief, für Google Workspace `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `*.googleapis.com`, für Todoist `ai.todoist.net`, `todoist.com`, für GitHub `github.com`, `api.github.com`, `raw.githubusercontent.com`, `codeload.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, für GitLab `gitlab.com`, für Composio `connect.composio.dev`, `login.composio.dev` (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
+| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief, für Google Workspace `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `*.googleapis.com`, für Todoist `ai.todoist.net`, `todoist.com`, für GitHub `github.com`, `api.github.com`, `raw.githubusercontent.com`, `codeload.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, für GitLab `gitlab.com`, für Composio `connect.composio.dev`, `login.composio.dev`, für Microsoft 365 `login.microsoftonline.com`, `graph.microsoft.com`, `*.sharepoint.com` (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
 | Sprachnachrichten | `stt.provider: local` (faster-whisper, Modell `small`, Sprache automatisch) | Self-hosted statt Cloud-STT (Groq/OpenAI bräuchten eigenen Key, OpenAI-STT läuft nicht über den Codex-Login). Node hat 16 Kerne/64 GB, Pod-Limit 2 Gi reicht für `small` (int8). |
 | config.yaml | `bootstrap.overwrite: true` – das Chart schreibt `config.yaml` bei jedem Start aus dem HelmRelease neu | Git ist die Wahrheit; Laufzeit-Änderungen (z. B. `/model` im Chat) überleben keinen Pod-Neustart. Dauerhafte Änderungen gehören ins HelmRelease. |
 | Python-Extras | Init-Container `install-extras` (Kopie von seed-config per postRenderer) führt bei jedem Start `hermes pm install --extra google --extra stt-whisper` aus und legt `/opt/data/bin/python` an | Deklarativ statt Handarbeit im Pod; nach Volume-Verlust baut es sich selbst wieder auf. Der Wrapper gibt Skill-Skripten in der Agenten-Shell das Hermes-Python (sonst System-Python ohne Bibliotheken). |
@@ -476,6 +476,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | GitLab | Zweigleisig: offizieller Remote-MCP `https://gitlab.com/api/v4/mcp` (Katalog-Eintrag, OAuth über das Dashboard) für Issues, Merge Requests, Pipelines; dazu `GITLAB_TOKEN` (PAT, nur `read_repository`/`write_repository`) in `hermes-secrets` für git über HTTPS, vom Init-Container in `~/.git-credentials` eingetragen | Entscheidung 2026-11-11. Es gibt kein gebündeltes GitLab-Skill und keine `glab`-CLI im Image; der MCP ersetzt die API-Seite, der PAT bleibt auf Repo-Inhalte beschränkt. |
 | Todoist | Offizieller Remote-MCP-Server `https://ai.todoist.net/mcp` aus dem Hermes-Katalog, deklarativ als `config.mcp_servers.todoist` im HelmRelease; OAuth 2.1 mit Dynamic Client Registration, Einwilligung einmalig über das Dashboard, Token auf dem Volume | Entscheidung 2026-11-11. Kein API-Token in Git/SOPS nötig, kein lokaler MCP-Prozess im Pod (nur HTTP). Scope `data:read_write` (Aufgaben, Projekte, Kommentare lesen und schreiben). |
 | Composio | Gehosteter Meta-MCP `https://connect.composio.dev/mcp` (Vorgabe von `composio.dev/hermes`), deklarativ als `config.mcp_servers.composio` im HelmRelease; OAuth 2.1 mit Dynamic Client Registration gegen `login.composio.dev`, Einwilligung einmalig über das Dashboard, Token auf dem Volume. Welche SaaS-Apps dahinter freigeschaltet sind, wird im Composio-Dashboard entschieden, nicht in Git | Entscheidung 2026-11-18, nachdem der Agent die Einrichtung selbst nicht schaffte (Egress-Sperre, siehe „Composio“ unten). Kein Katalog-Eintrag bei Hermes, kein API-Key in Git/SOPS. Composio ist ein Zwischenhändler: alles, was der Agent über Composio tut, läuft über deren Server. Deshalb dort nur Apps anbinden, für die es keinen direkten Weg gibt (Google Workspace, Todoist, GitHub, GitLab haben einen). |
+| SharePoint/OneDrive | **Spiegel im Cluster** statt API-Zugriff: zwei Sidecars `onedrive` (OneDrive des Kontos) und `sharepoint` (eine Bibliothek per `drive_id`) mit [abraunegg/onedrive](https://github.com/abraunegg/onedrive) (Image `driveone/onedrive:2.5.12-alpine`) im Hermes-Pod, Monitor-Modus in beide Richtungen, gemeinsame PVC `hermes-m365` (StorageClass `longhorn-cache`: 1 Replik, Recurring-Job-Gruppe `no-backup`), Hermes sieht die Dateien unter `/opt/onedrive` und `/opt/sharepoint`. Login je Sidecar per Device-Code-Flow gegen eine **eigene Entra-App** (Public Client), Konfiguration als ConfigMap `m365-sync` im Overlay | Entscheidung 2026-11-18. Hermes arbeitet mit lokalen Dateien (grep, Python, pandoc) deutlich besser als über Graph-Tool-Calls; der Client verhält sich wie der Desktop-OneDrive (inotify-Upload, Deltas alle 5 min). Kein Composio: Geschäftsdokumente nicht durch einen Zwischenhändler. Kein `rclone mount` (FUSE unter PSS `restricted` unmöglich), kein `rclone bisync` (Aufsatz statt Client). Keine zusätzliche Sicherung: OneDrive wird bereits gesichert, der Spiegel baut sich neu auf. Kein Löschschutz möglich (`no_remote_delete` gibt es nur upload-only) – Papierkorb in SharePoint ist das Netz. |
 | Google Workspace | Skill `google-workspace` mit eigenem OAuth-Desktop-Client; Client-Secret als SOPS-Secret auf `/opt/data/google_client_secret.json` gemountet, Token `google_token.json` auf dem Volume | Entscheidung 2026-11-11. Volle Scopes (Gmail senden/ändern, Drive, Calendar, Sheets, Docs, Contacts) – Inhalte gehen beim Verarbeiten an OpenAI. Nur-Mail-Alternative wäre das `himalaya`-Skill mit App-Passwort. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
 
@@ -841,10 +842,126 @@ Token-Dateien: `/opt/data/mcp-tokens/composio.json`, `composio.client.json`, `co
 nach Volume-Verlust Schritt 2–4 wiederholen. Trennen: Dateien löschen und im Composio-Dashboard die Verbindung
 bzw. das Konto löschen.
 
+**Stand 2026-11-18 (Connect und Neustart erledigt):** der Agent sieht 11 Tools, alle mit Präfix `COMPOSIO_`:
+`SEARCH_TOOLS`, `GET_TOOL_SCHEMAS`, `MULTI_EXECUTE_TOOL` (der eigentliche Weg zu den Apps), `MANAGE_CONNECTIONS`
+(Apps verbinden), `PROXY_EXECUTE` (roher API-Aufruf an eine verbundene App), `REMOTE_BASH_TOOL` und
+`REMOTE_WORKBENCH` (Code-Ausführung in einer Composio-Sandbox, nicht im Pod), `SEARCH_SKILLS`, `USE_SKILL`,
+`MANAGE_SKILL` (von Composio gehostete Skills, also fremder Prompt-Inhalt), `SUBMIT_FEEDBACK` (Telemetrie an
+Composio). `tools.exclude` ist noch leer; Kandidaten für den Ausschluss sind die beiden Remote-Ausführungs-Tools
+(der Pod ist die Sandbox, Entscheidung „Terminal-Backend local“), `PROXY_EXECUTE` und `SUBMIT_FEEDBACK`.
+
 **Prüfen:** `kubectl --context karibik -n hermes exec deploy/hermes -c hermes-agent -- sh -c 'HOME=/opt/data hermes mcp list'`
-(Server `composio` mit Auth-Status und Tool-Zahl); im Chat „Welche Apps sind in Composio verbunden?“. Bei Hängern
+zeigt nur die Konfiguration („enabled“), nicht die Live-Verbindung; die geladenen Tools liefert
+`hermes chat -q "Liste nur die Namen der Tools vom MCP-Server composio"` (so am 2026-11-18 verifiziert) oder im
+Telegram-Chat „Welche Apps sind in Composio verbunden?“. Bei Hängern
 `hubble observe --from-pod hermes/ --verdict DROPPED` – taucht dort ein dritter `*.composio.dev`-Host auf, die
 Policy ergänzen (Stand 2026-11-18 sind es nur die zwei oben).
+
+### SharePoint/OneDrive – Spiegel im Cluster (Sidecars `onedrive` und `sharepoint`)
+
+**Warum ein Spiegel:** Hermes soll Dokumente lesen, durchsuchen, auswerten und auch schreiben. Über die Graph-API
+wäre jeder Dateizugriff ein Tool-Call; mit lokalen Dateien nutzt der Agent sein Terminal (grep, Python, pandoc).
+Composio schied aus (Geschäftsdokumente durch einen Zwischenhändler, Tokens bei Composio), `rclone mount` braucht
+FUSE (`SYS_ADMIN` + `/dev/fuse`, unter PSS `restricted` unmöglich), `rclone bisync` ist ein periodischer Aufsatz.
+Der [Linux-OneDrive-Client von abraunegg](https://github.com/abraunegg/onedrive) ist dagegen ein echter
+Sync-Client wie OneDrive auf dem Desktop: beide Richtungen, lokale Änderungen per inotify sofort hochgeladen,
+Online-Änderungen per Delta alle 5 Minuten, Konflikte ohne Datenverlust (lokale Kopie wird umbenannt, Online-
+Version geholt). Kein FUSE, kein root. Entscheidung 2026-11-18.
+
+**Warum zwei Instanzen:** ein Client synchronisiert genau ein Laufwerk, entweder das OneDrive des Kontos oder
+eine SharePoint-Bibliothek (`drive_id`). Die Alternative, die Bibliothek als Verknüpfung in „Meine Dateien“
+einzuhängen und mit `sync_business_shared_items` über eine Instanz zu holen, wurde verworfen (Entscheidung
+2026-11-18, „Weg 2“): zwei Sidecars sind zwei Tokens, zwei Logins, aber auch zwei unabhängige Zustände, und das
+Bibliotheks-Konto kann ein anderes sein als das OneDrive-Konto.
+
+**Warum Sidecar und kein eigener Namespace:** PVCs sind namespace-gebunden, und Hermes muss dieselben Dateien
+sehen. Ein eigenständiger Sync-Dienst müsste den Spiegel per Longhorn-RWX (NFS-Share-Manager) teilen – über NFS
+verliert der Client inotify (lokale Änderungen erst beim nächsten vollen Scan), und jeder weitere Konsument
+teilt sich die Löschsemantik. Wiederverwendbar ist das Muster: StorageClass `longhorn-cache` (cluster-weit),
+Config-Datei und Sidecar-Block lassen sich in jeden anderen Pod kopieren. Erst wenn mehrere Pods denselben
+Spiegel brauchen, lohnt ein eigener Namespace mit RWX-Volume.
+
+**Aufbau:**
+
+- Zwei Sidecars `onedrive` und `sharepoint` im Hermes-Pod (`extraContainers` im HelmRelease, bis auf Name,
+  `SYNC_NAME` und `subPath` identisch), Image `driveone/onedrive:2.5.12-alpine` gepinnt, UID 10000 wie Hermes,
+  read-only Rootfs, `/tmp` als tmpfs. Der Docker-Entrypoint erkennt den Nicht-root-Start und ruft den Client
+  direkt mit `--confdir /onedrive/conf --syncdir /onedrive/data --monitor` auf; ein Wrapper kopiert vorher
+  `<SYNC_NAME>.config` (und optional `<SYNC_NAME>.sync_list`) aus der ConfigMap in das beschreibbare `conf/`,
+  weil der Client dort `refresh_token` und `items.sqlite3` ablegt.
+- Gemeinsame PVC [`hermes-m365`](../../infrastructure/karibik/hermes/pvc-m365.yaml) (10 Gi, erweiterbar) mit
+  StorageClass [`longhorn-cache`](../../infrastructure/karibik/hermes/storageClass.yaml): **eine Replik** und
+  per `recurringJobSelector` fest in der Recurring-Job-Gruppe `no-backup`. Longhorn hängt Jobs der Gruppe
+  `default` an alle Volumes *ohne* Gruppen-Label; dieses Volume bleibt damit auch außen vor, wenn später ein
+  Backup-Job über die default-Gruppe kommt. Microsoft 365 wird bereits gesichert, der Spiegel ist Cache.
+  Unterverzeichnisse `onedrive/{data,conf}` und `sharepoint/{data,conf}` legt der Init-Container `prepare-home`
+  an (Longhorn-Wurzel gehört root, gleiche Lösung wie bei `/opt/data`).
+- Hermes sieht nur die `data/`-Verzeichnisse: **`/opt/onedrive`** und **`/opt/sharepoint`** (read-write), nicht
+  `conf/` mit den Tokens. Bewusst außerhalb von `HERMES_HOME`, damit die Besitzer-Prüfung von Hermes nichts
+  davon merkt.
+- Konfiguration: [`m365/onedrive.config`](../../infrastructure/karibik/hermes/m365/onedrive.config) und
+  [`m365/sharepoint.config`](../../infrastructure/karibik/hermes/m365/sharepoint.config) im Overlay → ConfigMap
+  `m365-sync` (keine Secrets: App-ID und Tenant-ID eines Public Clients sind keine Geheimnisse). Gesetzt:
+  `use_device_auth`, `application_id`, `azure_tenant_id`, `drive_id` (nur sharepoint), `skip_dotfiles`,
+  `disable_upload_validation` (SharePoint „bereichert“ Office-Dateien nach dem Upload mit Metadaten, ohne die
+  Option lädt der Client sie als „geändert“ wieder herunter), `monitor_interval 300` (Minimum des Clients),
+  `monitor_fullscan_frequency 12`.
+- Egress-Policy `allow-egress-to-microsoft-365`: `login.microsoftonline.com`, `graph.microsoft.com`,
+  `*.sharepoint.com` (Dateiinhalte liegen auf `<tenant>.sharepoint.com` bzw. `<tenant>-my.sharepoint.com`).
+  Gilt für den ganzen Pod, also auch für den Agenten. inotify auf barbossa-kube: 518 513 Watches, 128
+  Instanzen (geprüft 2026-11-18, Kernel 7.0) – zwei Clients teilen sich das Kontingent der UID 10000.
+
+**Kein Löschschutz:** `no_remote_delete` kennt der Client nur zusammen mit `--upload-only`. Bidirektional heißt:
+löscht der Agent eine Datei unter `/opt/onedrive` oder `/opt/sharepoint`, ist sie online im Papierkorb
+(93 Tage). Wer das nicht will, nimmt `download_only` (Lesen) plus einen expliziten Rückweg für einzelne Dateien.
+
+**Einrichtung (einmalig):**
+
+1. **App in Entra ID registrieren:** <https://entra.microsoft.com> → App-Registrierungen → Neu. Name z. B.
+   `hermes-onedrive`, Kontotyp „Nur Konten in diesem Organisationsverzeichnis“ (Single Tenant). Nach dem
+   Anlegen unter *Authentifizierung*: Plattform **Mobile und Desktopanwendungen** mit den Redirect-URIs
+   `http://127.0.0.1:53100/` und `https://login.microsoftonline.com/common/oauth2/nativeclient` (der Client
+   erwartet beide, sonst `AADSTS50011`), und **„Öffentliche Clientflows zulassen“ = Ja** (ohne das kein
+   Device-Code). Unter *API-Berechtigungen* (Microsoft Graph, delegiert): `Files.ReadWrite`,
+   `Files.ReadWrite.All`, `Sites.ReadWrite.All`, `offline_access`; dann „Administratorzustimmung erteilen“.
+   Kein Client-Secret anlegen – es ist ein Public Client. Eine App reicht für beide Sidecars.
+   **Erledigt 2026-11-18** per Azure-CLI (`az ad app create --sign-in-audience AzureADMyOrg
+   --is-fallback-public-client true --public-client-redirect-uris …`, `az ad sp create`,
+   `az ad app permission admin-consent`): App `hermes-onedrive`, Anwendungs-ID
+   `08d2c8df-9de2-4ddb-8328-eed94f794100`, Tenant „Hummler GbR“ `7804793a-7aea-4b72-af44-80d502e33d8d`,
+   Grant `AllPrincipals` mit allen vier Scopes. Die Zustimmung schlug direkt nach dem Anlegen einmal mit
+   „application … has been removed“ fehl (Replikationsverzug), beim zweiten Versuch nach ~1 min ging sie durch.
+2. `application_id` (Anwendungs-ID) und `azure_tenant_id` (Verzeichnis-ID) in **beide** Config-Dateien
+   eintragen (erledigt 2026-11-18). `drive_id` in `sharepoint.config` bleibt vorerst `REPLACE_ME` (Schritt 5).
+3. Pushen, Reconcile (`flux --context karibik reconcile ks hermes --with-source`). Der Pod startet neu mit
+   drei Containern; Hermes selbst wartet nicht auf die Sidecars.
+4. **Device-Login, je Sidecar einmal:** `kubectl --context karibik -n hermes logs -f deploy/hermes -c onedrive`
+   zeigt URL (`https://microsoft.com/devicelogin`) und Code, ca. 15 Minuten gültig. Mit dem M365-Konto
+   anmelden, dessen OneDrive Hermes bekommen soll. Dasselbe mit `-c sharepoint` und dem Konto, das die
+   Bibliothek sehen darf (kann dasselbe sein). Danach schreibt der Client `refresh_token` nach `conf/` und
+   beginnt den ersten Abgleich (Fortschritt im Log). Läuft ein Code ab, beendet sich der Container, Kubernetes
+   startet ihn neu, neuer Code im Log. Solange `drive_id` in `sharepoint.config` fehlt, spiegelt der
+   `sharepoint`-Sidecar das OneDrive ein zweites Mal – deshalb Schritt 5 direkt anschließen.
+5. **Bibliothek wählen:** `kubectl … exec deploy/hermes -c sharepoint -- onedrive --confdir /onedrive/conf
+   --get-sharepoint-drive-id '<Site-Name>'` druckt Site, Bibliothek und `drive_id`. In `sharepoint.config`
+   eintragen, pushen, dann einmalig `ONEDRIVE_RESYNC` am `sharepoint`-Sidecar im HelmRelease auf `"1"` setzen,
+   Reconcile, nach dem Durchlauf wieder `"0"`. Hat der Client vorher schon OneDrive-Inhalte nach
+   `sharepoint/data` geladen, diese vor dem Resync löschen (`kubectl … exec -c sharepoint -- sh -c 'rm -rf
+   /onedrive/data/* /onedrive/data/.[!.]*'`), sonst lädt er sie in die Bibliothek hoch.
+6. **Teilsynchronisation (optional, je Sidecar):** Datei `m365/<name>.sync_list` anlegen (ein Pfad pro Zeile
+   relativ zur Laufwerkswurzel, `!`-Zeilen schließen aus, `**` rekursiv; sobald die Datei existiert, ist alles
+   andere ausgeschlossen), in `kustomization.yaml` als weiteres `files:`-Element eintragen, pushen, dann einmalig
+   `ONEDRIVE_RESYNC=1` am betroffenen Sidecar wie in Schritt 5. Der Wrapper löscht eine alte `sync_list` aus
+   `conf/`, wenn die ConfigMap keine mehr hat.
+
+**Prüfen:** `kubectl … logs deploy/hermes -c onedrive --tail=50` bzw. `-c sharepoint` (Monitor-Zyklen,
+Up-/Downloads), dann im Chat „Was liegt unter /opt/onedrive und /opt/sharepoint?“ und als Schreibtest „Lege
+unter /opt/sharepoint/hermes-test.txt eine Datei mit dem heutigen Datum an“ – sie muss binnen Sekunden in der
+Bibliothek erscheinen. Hänger: `hubble observe --from-pod hermes/ --verdict DROPPED`; taucht ein weiterer
+Microsoft-Host auf, die Policy ergänzen. Exit-Code 78 eines Sidecars = Client verlangt `--resync` (Schritt 5).
+
+**Trennen:** `<name>/conf/refresh_token` löschen (oder `ONEDRIVE_LOGOUT=1` einmalig am Sidecar) und in Entra
+die App löschen. Volume-Verlust ist harmlos: Schritt 4 und 5 wiederholen, der Spiegel baut sich neu auf.
 
 ### Egress erweitern (Rezept)
 

@@ -187,6 +187,31 @@ spec:
         - ports:
             - port: "443"
 ---
+# Microsoft 365 (Doku 4e "SharePoint/OneDrive"): Sidecar onedrive (abraunegg/onedrive) im Hermes-Pod.
+#   login.microsoftonline.com  Device-Code-Flow (eigene Entra-App) und Token-Refresh
+#   graph.microsoft.com        Microsoft Graph (Drive-Listing, Deltas, Up-/Download-Sessions)
+#   *.sharepoint.com           Tenant-Hosts fuer die eigentlichen Dateiinhalte (<tenant>.sharepoint.com fuer
+#                              SharePoint-Bibliotheken, <tenant>-my.sharepoint.com fuer OneDrive), Graph leitet
+#                              Downloads und Upload-Sessions dorthin um. Ciliums "*" matcht ein Label – reicht.
+# Die Policy gilt fuer den ganzen Pod (ServiceAccount), also auch fuer den Agenten selbst. Die Seite
+# microsoft.com/devicelogin oeffnet der Browser des Nutzers.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-to-microsoft-365
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: hermes
+  egress:
+    - toFQDNs:
+        - matchName: login.microsoftonline.com
+        - matchName: graph.microsoft.com
+        - matchPattern: "*.sharepoint.com"
+      toPorts:
+        - ports:
+            - port: "443"
+---
 # Noch NICHT freigegeben (bewusst): api.openai.com (nur fuer Provider openai-api noetig),
 # hermes-agent.nousresearch.com (Modellkatalog, nur Komfort fuer /model), allgemeines Internet (Web-Tools des
 # Agenten), kube-apiserver (kein SA-Token gemountet).

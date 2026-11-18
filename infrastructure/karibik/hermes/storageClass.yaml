@@ -1,0 +1,20 @@
+# Longhorn-Klasse fuer Caches, die sich selbst wieder aufbauen (Hermes' SharePoint-Spiegel, Doku 4e
+# "SharePoint/OneDrive"): eine Replik statt zwei, und per recurringJobSelector fest in einer eigenen
+# Recurring-Job-Gruppe "no-backup". Longhorn haengt Jobs der Gruppe "default" an alle Volumes OHNE
+# Gruppen-Label; ein Volume mit diesem Label bleibt also auch dann draussen, wenn spaeter ein
+# Backup-Job ueber die default-Gruppe kommt. Die Gruppe selbst braucht keinen Job.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-cache
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+parameters:
+  numberOfReplicas: "1"
+  staleReplicaTimeout: "1440"
+  fsType: ext4
+  recurringJobSelector: '[{"name":"no-backup","isGroup":true}]'
