@@ -27,6 +27,12 @@ configMapGenerator:
     files:
       - SKILL.md=m365-graph/SKILL.md
       - graph.py=m365-graph/graph.py
+  # Skill odoo (Odoo Online beg-paf.odoo.com, XML-RPC; Doku 4e "Odoo"): install-extras kopiert beide Dateien
+  # nach /opt/data/skills/business/odoo/ und schreibt die Zugangsdaten aus hermes-secrets (ODOO_*) als Datei.
+  - name: odoo-skill
+    files:
+      - SKILL.md=odoo/SKILL.md
+      - odoo.py=odoo/odoo.py
   - name: m365-sync
     files:
       - onedrive.config=m365/onedrive.config

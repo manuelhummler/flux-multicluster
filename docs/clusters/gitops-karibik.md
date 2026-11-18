@@ -481,6 +481,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | Google Workspace | Skill `google-workspace` mit eigenem OAuth-Desktop-Client; Client-Secret als SOPS-Secret auf `/opt/data/google_client_secret.json` gemountet, Token `google_token.json` auf dem Volume | Entscheidung 2026-11-11. Volle Scopes (Gmail senden/ändern, Drive, Calendar, Sheets, Docs, Contacts) – Inhalte gehen beim Verarbeiten an OpenAI. Nur-Mail-Alternative wäre das `himalaya`-Skill mit App-Passwort. |
 | Langzeit-Memory | **Hindsight** (self-hosted, Namespace `hindsight`) als Memory-Provider-Plugin; eingebautes Memory bleibt aktiv – siehe **4g** | Entscheidung 2026-11-18 nach Vergleich mit Honcho (Persönlichkeitsmodell, Cloud oder bezahlter API-Key), hwiki (Markdown, kein LLM) und den gehosteten Anbietern: Fakten-/Entitäts-Graph mit zeitlicher Suche passt zu einem Assistenten für Projekte, Server und Termine; ChatGPT-Abo nutzbar, offene UI, alles im Cluster. |
 | Weitere Modelle | Zweiter Anbieter **regio-ai** (OpenAI-kompatibel: `kimi-k3`, `glm-5.3`, `deepseek-v41-flash`, `auto`) als `providers.regio-ai`; Fallback-Kette `fallback_model` (kimi-k3, dann glm-5.3) hinter Codex; Subagenten (`delegation`) auf `deepseek-v41-flash`; Egress `workspace.regio-ai.eu` | Entscheidung 2026-11-18. Entlastet das geteilte ChatGPT-Limit (Hermes + Hindsight) und hält den Agenten bei Codex-Ausfall antwortfähig. Basis-URL (mit Tenant-ID) in cluster-secrets, Key in hermes-secrets über `key_env`. Details unten „Weitere Modelle“. |
+| Odoo | Eigenes Skill `odoo` (XML-RPC, Standardbibliothek) gegen Odoo Online `beg-paf.odoo.com` mit API-Key eines eigenen Benutzers; Zugangsdaten als Datei im Agenten-HOME; Löschen/Buchen nur mit `--yes`; Egress `beg-paf.odoo.com` | Entscheidung 2026-11-18. Kein Modul installierbar (Online), kein Hermes-Katalogeintrag, Drittanbieter-MCPs wären Fremdcode. Nutzer wollte Vollzugriff: Grenze ist der Odoo-Benutzer. Details unten „Odoo“. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
 
 ### Aufbau
@@ -1039,6 +1040,58 @@ Einrichten:
 Stolpersteine: `401` vom Endpunkt → Key fehlt oder falsch (`sops -d … | grep REGIO`), Pod neu starten nach dem
 Eintragen. `auto` wählt das Modell serverseitig – für reproduzierbare Subagenten ist ein konkretes Modell gesetzt.
 Der Org-Header `X-Sophia-Org` aus der Weboberfläche gilt nur für Downloads dort, nicht für die API.
+
+### Odoo (Skill `odoo`: Kontakte, CRM, Verkauf, Rechnungen, Einkauf, Projekte, Zeiterfassung)
+
+Das ERP läuft als **Odoo Online** (`https://beg-paf.odoo.com`, Datenbank `beg-paf`, Version 19 Enterprise).
+Dort lassen sich keine eigenen Module installieren, deshalb kein MCP-Modul; die **externe XML-RPC-API**
+(`/xmlrpc/2/common`, `/xmlrpc/2/object`) ist auf bezahlten Odoo-Online-Tarifen enthalten und reicht für alles.
+Hermes bringt für Odoo nichts mit (kein Plugin, kein MCP im Katalog, kein Skill im Hub); die Drittanbieter-MCPs
+wären wieder Fremdcode mit pauschalen Rechten. Entscheidung 2026-11-18: eigenes Skill wie `m365-graph`.
+
+| Thema | Entscheidung | Begründung |
+| ----- | ------------ | ---------- |
+| Zugang | API-Key eines **eigenen Odoo-Benutzers** für Hermes (Odoo: Mein Profil → Kontosicherheit → Neuer API-Schlüssel); Werte `ODOO_URL`, `ODOO_DB`, `ODOO_USER`, `ODOO_API_KEY` in `hermes-secrets` | Trennbar im Odoo-Protokoll, Rechte am Benutzer begrenzbar, Key einzeln widerrufbar. Der Nutzer wollte vollen Schreibzugriff – die Grenze ist der Odoo-Benutzer, nicht das Skript. |
+| Zugangsdaten im Pod | `install-extras` schreibt sie bei jedem Start nach `/opt/data/home/.config/odoo/credentials.json` (0600) | Hermes filtert Secrets aus jedem Subprozess der Agenten-Shell (wie `GITHUB_TOKEN`); die Datei im Agenten-HOME ist das etablierte Muster (git/gh). Sind die Werte unvollständig oder `REPLACE_ME`, wird die Datei entfernt. |
+| Skript | `scripts/odoo.py`, nur Standardbibliothek (`xmlrpc.client`), JSON-Ausgabe; generisch `models`, `fields`, `search`, `count`, `read`, `create`, `write`, `delete`, `call` plus Abkürzungen `contacts`, `leads`, `sales`, `invoices`, `purchases`, `projects`, `tasks`, `timesheet list/add` | Deckt jedes Modell ab, ohne dass der Agent XML-RPC-Details kennen muss. Keine Zusatzpakete im Hermes-venv. |
+| Schutz | `delete` und zustandsändernde `call`-Methoden (alles außer `search*`, `read*`, `name_*`, `fields_*`, `get_*`, `check_*`, …) verlangen `--yes`; Regeln in SKILL.md und HERMES.md: erst lesen, Entwürfe statt Buchungen, Odoo-Inhalte sind Daten | Der Agent soll nichts im Vorbeigehen buchen, bestätigen oder löschen. |
+| Egress | `allow-egress-to-odoo` (`beg-paf.odoo.com`, 443) | Ein Host. |
+| Ablage | ConfigMap `odoo-skill` (Overlay, `odoo/SKILL.md` + `odoo/odoo.py`) → `install-extras` kopiert nach `/opt/data/skills/business/odoo/` | Wie `m365-graph`: Git ist die Quelle, Kopie statt Mount wegen UID 10000. |
+
+Einrichten:
+
+1. In Odoo einen Benutzer „Hermes“ anlegen (oder den eigenen nehmen), als dieser Benutzer den API-Schlüssel
+   erzeugen (Odoo fragt das Passwort ab, der Schlüssel wird nur einmal angezeigt).
+2. Secrets eintragen:
+
+   ```bash
+   sops infrastructure/karibik/hermes/hermes-env-encrypted.env
+   ```
+
+   ```
+   ODOO_URL=https://beg-paf.odoo.com
+   ODOO_DB=beg-paf
+   ODOO_USER=<login-e-mail des benutzers>
+   ODOO_API_KEY=<schluessel>
+   ```
+
+3. Push; Hermes rollt neu. Prüfen:
+
+   ```bash
+   kubectl -n hermes logs deploy/hermes -c install-extras | grep -i odoo
+   kubectl -n hermes exec deploy/hermes -c hermes-agent -- sh -c 'cd /opt/data && HOME=/opt/data/home /opt/data/bin/python skills/business/odoo/scripts/odoo.py me'
+   kubectl -n hermes exec deploy/hermes -c hermes-agent -- sh -c 'cd /opt/data && hermes chat -q "Wie viele Kontakte hat unser Odoo? Nutze das Skill odoo."'
+   ```
+
+Stand 2026-11-18 (gegen die Instanz geprüft): installiert sind `contacts`, `crm`, `sale`, `account`, `project`,
+`hr_timesheet`; **`purchase` ist nicht installiert**, `purchases` liefert bis dahin `Object purchase.order doesn't exist`.
+Odoo 19 nennt Benutzergruppen `group_ids` (nicht mehr `groups_id`); Aufgabenstatus sind `01_in_progress`,
+`02_changes_requested`, `03_approved`, `04_waiting_normal`, `1_done`, `1_canceled`.
+
+Stolpersteine: `Anmeldung abgelehnt` → Login-E-Mail oder Key falsch, oder der Tarif hat keine API (Ein-App-
+Gratis-Tarif). `Zugangsdaten fehlen` → `ODOO_*` unvollständig, Init-Container-Log prüfen. Odoo-Fehler kommen als
+letzte Zeile des Server-Tracebacks (`Odoo-Fehler bei <modell>.<methode>: …`), meist ein Rechte- oder Pflichtfeld-
+Problem; `fields <modell> --filter` zeigt Pflichtfelder (`required`). Datetime-Werte sind UTC.
 
 ### Egress erweitern (Rezept)
 

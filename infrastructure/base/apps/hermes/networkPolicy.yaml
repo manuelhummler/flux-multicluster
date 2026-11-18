@@ -225,6 +225,22 @@ spec:
         - ports:
             - port: "443"
 ---
+# Odoo Online (Doku 4e "Odoo"): externe XML-RPC-API der Instanz beg-paf.odoo.com fuer das Skill odoo.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-to-odoo
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: hermes
+  egress:
+    - toFQDNs:
+        - matchName: beg-paf.odoo.com
+      toPorts:
+        - ports:
+            - port: "443"
+---
 # Noch NICHT freigegeben (bewusst): api.openai.com (nur fuer Provider openai-api noetig),
 # hermes-agent.nousresearch.com (Modellkatalog, nur Komfort fuer /model), allgemeines Internet (Web-Tools des
 # Agenten), kube-apiserver (kein SA-Token gemountet).
