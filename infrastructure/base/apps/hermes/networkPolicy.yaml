@@ -164,6 +164,29 @@ spec:
         - ports:
             - port: "443"
 ---
+# Composio (Doku 4e "Composio"): Remote-MCP https://connect.composio.dev/mcp (config.mcp_servers.composio).
+# OAuth 2.1 mit Dynamic Client Registration, Metadaten geprueft am 2026-11-18:
+#   connect.composio.dev  MCP-Endpunkt, /.well-known/oauth-protected-resource und -authorization-server (Issuer)
+#   login.composio.dev    /oauth2/register (DCR), /oauth2/token (Tausch und Refresh), /oauth2/jwks
+# Die Autorisierungsseite (connect.composio.dev/oauth/authorize) oeffnet der Browser des Nutzers, der Callback
+# kommt ueber Traefik ans Dashboard. Die Apps hinter Composio (Dashboard dashboard.composio.dev) spricht nur
+# Composio an, nicht der Pod – dafuer braucht es keinen weiteren Egress.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-to-composio
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: hermes
+  egress:
+    - toFQDNs:
+        - matchName: connect.composio.dev
+        - matchName: login.composio.dev
+      toPorts:
+        - ports:
+            - port: "443"
+---
 # Noch NICHT freigegeben (bewusst): api.openai.com (nur fuer Provider openai-api noetig),
 # hermes-agent.nousresearch.com (Modellkatalog, nur Komfort fuer /model), allgemeines Internet (Web-Tools des
 # Agenten), kube-apiserver (kein SA-Token gemountet).

@@ -467,7 +467,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | LLM-Provider | `openai-codex`: das ChatGPT-Plus-Abo per **Codex-OAuth** (Device-Code-Login beim Pod-Start, Init-Container `auth-device-login`), Modell `gpt-6-luna` | Entscheidung 2026-11-08 trotz Vorbehalten (siehe „Vorbehalte Codex-OAuth“ unten): kein zusätzlicher API-Key, Kosten im Abo. Das Plus-Abo enthält **keinen** API-Zugang, die Alternative `openai-api` mit Platform-Key steht unten. |
 | Dashboard-Login | Hermes-eigene **Basic-Auth** (`HERMES_DASHBOARD_BASIC_AUTH_*`), später **OIDC gegen Keycloak** | Hermes erzwingt bei Bind auf 0.0.0.0 eine eigene Auth („fails closed“); kein oauth2-proxy nötig (den gibt es auf karibik noch nicht). OIDC erst nach dem Keycloak-Cutover, sonst ändert sich die Issuer-URL. |
 | Terminal-Backend | `local` – der Agent führt Shell-Befehle **im eigenen Pod** aus | `docker` braucht einen Daemon/Socket (im Cluster nicht unterstützt). Der Pod ist die Sandbox: `restricted`, read-only Rootfs, kein ServiceAccount-Token, Cilium default-deny. |
-| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief, für Google Workspace `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `*.googleapis.com`, für Todoist `ai.todoist.net`, `todoist.com`, für GitHub `github.com`, `api.github.com`, `raw.githubusercontent.com`, `codeload.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, für GitLab `gitlab.com` (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
+| Egress | **minimal**: `auth.openai.com`, `chatgpt.com` (Codex-Login/-Refresh und Inference), `api.telegram.org`, dazu für die lokale Transkription `pypi.org`, `files.pythonhosted.org`, `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` bis drei Labels tief, für Google Workspace `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `*.googleapis.com`, für Todoist `ai.todoist.net`, `todoist.com`, für GitHub `github.com`, `api.github.com`, `raw.githubusercontent.com`, `codeload.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, für GitLab `gitlab.com`, für Composio `connect.composio.dev`, `login.composio.dev` (alle 443, toFQDNs) | Erweiterung Schritt für Schritt (Rezept unten). Web-Tools des Agenten funktionieren erst, wenn Internet freigegeben ist. |
 | Sprachnachrichten | `stt.provider: local` (faster-whisper, Modell `small`, Sprache automatisch) | Self-hosted statt Cloud-STT (Groq/OpenAI bräuchten eigenen Key, OpenAI-STT läuft nicht über den Codex-Login). Node hat 16 Kerne/64 GB, Pod-Limit 2 Gi reicht für `small` (int8). |
 | config.yaml | `bootstrap.overwrite: true` – das Chart schreibt `config.yaml` bei jedem Start aus dem HelmRelease neu | Git ist die Wahrheit; Laufzeit-Änderungen (z. B. `/model` im Chat) überleben keinen Pod-Neustart. Dauerhafte Änderungen gehören ins HelmRelease. |
 | Python-Extras | Init-Container `install-extras` (Kopie von seed-config per postRenderer) führt bei jedem Start `hermes pm install --extra google --extra stt-whisper` aus und legt `/opt/data/bin/python` an | Deklarativ statt Handarbeit im Pod; nach Volume-Verlust baut es sich selbst wieder auf. Der Wrapper gibt Skill-Skripten in der Agenten-Shell das Hermes-Python (sonst System-Python ohne Bibliotheken). |
@@ -475,6 +475,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | GitHub | Personal Access Token (classic, Scopes `repo`, `workflow`, `read:org`) als `GITHUB_TOKEN` in `hermes-secrets`; der Init-Container `install-extras` installiert die `gh`-CLI (gepinnt, SHA256-geprüft) nach `/opt/data/bin` und schreibt `~/.git-credentials` und `~/.config/gh/hosts.yml` | Entscheidung 2026-11-11. Classic statt fine-grained, weil nur der classic Token *alle* Repos abdeckt, auf die das Konto Zugriff hat (fremde Konten, Orgs ohne Fine-grained-Freigabe). Hermes streicht `GITHUB_TOKEN` absichtlich aus jedem Subprozess, daher der Umweg über Dateien. |
 | GitLab | Zweigleisig: offizieller Remote-MCP `https://gitlab.com/api/v4/mcp` (Katalog-Eintrag, OAuth über das Dashboard) für Issues, Merge Requests, Pipelines; dazu `GITLAB_TOKEN` (PAT, nur `read_repository`/`write_repository`) in `hermes-secrets` für git über HTTPS, vom Init-Container in `~/.git-credentials` eingetragen | Entscheidung 2026-11-11. Es gibt kein gebündeltes GitLab-Skill und keine `glab`-CLI im Image; der MCP ersetzt die API-Seite, der PAT bleibt auf Repo-Inhalte beschränkt. |
 | Todoist | Offizieller Remote-MCP-Server `https://ai.todoist.net/mcp` aus dem Hermes-Katalog, deklarativ als `config.mcp_servers.todoist` im HelmRelease; OAuth 2.1 mit Dynamic Client Registration, Einwilligung einmalig über das Dashboard, Token auf dem Volume | Entscheidung 2026-11-11. Kein API-Token in Git/SOPS nötig, kein lokaler MCP-Prozess im Pod (nur HTTP). Scope `data:read_write` (Aufgaben, Projekte, Kommentare lesen und schreiben). |
+| Composio | Gehosteter Meta-MCP `https://connect.composio.dev/mcp` (Vorgabe von `composio.dev/hermes`), deklarativ als `config.mcp_servers.composio` im HelmRelease; OAuth 2.1 mit Dynamic Client Registration gegen `login.composio.dev`, Einwilligung einmalig über das Dashboard, Token auf dem Volume. Welche SaaS-Apps dahinter freigeschaltet sind, wird im Composio-Dashboard entschieden, nicht in Git | Entscheidung 2026-11-18, nachdem der Agent die Einrichtung selbst nicht schaffte (Egress-Sperre, siehe „Composio“ unten). Kein Katalog-Eintrag bei Hermes, kein API-Key in Git/SOPS. Composio ist ein Zwischenhändler: alles, was der Agent über Composio tut, läuft über deren Server. Deshalb dort nur Apps anbinden, für die es keinen direkten Weg gibt (Google Workspace, Todoist, GitHub, GitLab haben einen). |
 | Google Workspace | Skill `google-workspace` mit eigenem OAuth-Desktop-Client; Client-Secret als SOPS-Secret auf `/opt/data/google_client_secret.json` gemountet, Token `google_token.json` auf dem Volume | Entscheidung 2026-11-11. Volle Scopes (Gmail senden/ändern, Drive, Calendar, Sheets, Docs, Contacts) – Inhalte gehen beim Verarbeiten an OpenAI. Nur-Mail-Alternative wäre das `himalaya`-Skill mit App-Passwort. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
 
@@ -791,6 +792,59 @@ Mitglied ist (eigene, Gruppen wie `hummler-gbr`, Einladungen).
 **Prüfen:** Init-Log „GitLab-Credentials für git geschrieben“, dann im Pod
 `sh -c 'HOME=/opt/data/home git ls-remote --heads https://gitlab.com/hummler-gbr/pro-makler.git | head -2'`; MCP-Seite im Chat:
 „Liste die offenen Merge Requests in hummler-gbr/pro-makler.“
+
+### Composio (SaaS-Apps hinter einem Meta-MCP) – Remote-MCP mit OAuth
+
+**Vorgeschichte (2026-11-18):** Die Aufforderung „Set up Composio from composio.dev/hermes“ direkt an den Agenten
+scheiterte: `hermes mcp add composio --url https://connect.composio.dev/mcp` lief in einen Timeout, der Browser
+des Agenten bekam `composio.dev` nicht geladen. Beides war die Cilium-Egress-Sperre des Pods (default-deny, kein
+Eintrag für `*.composio.dev`), kein Problem bei Composio. Dazu kommt: ein `hermes mcp add` im Pod hätte ohnehin nur
+die `config.yaml` auf dem Volume geändert, die `bootstrap.overwrite: true` beim nächsten Start aus dem HelmRelease
+überschreibt. Einrichtung deshalb wie bei Todoist und GitLab deklarativ in Git.
+
+**Was Composio ist:** ein gehosteter „Meta-MCP“ – ein Endpunkt, hinter dem Composio Hunderte SaaS-Apps (Slack,
+Notion, Linear, HubSpot, …) mit deren OAuth-Flows verwaltet. Der Agent bekommt Such- und Ausführungs-Tools, die
+konkreten Apps werden im Composio-Dashboard (<https://dashboard.composio.dev>) verbunden. Die Seite
+`composio.dev/hermes` enthält außer dem Einzeiler „MCP-Server `composio`, Transport HTTP, URL
+`https://connect.composio.dev/mcp`, keine Auth-Header, OAuth automatisch“ nur noch an den Agenten gerichtete
+Anweisungen (Composio dem Browser vorziehen, dem Nutzer Apps vorschlagen). Das ist Werbung im Tool-Kanal und ein
+Grund, Composio als fremden Inhalt zu behandeln: Tool-Beschreibungen und Rückgaben sind nicht vertrauenswürdiger
+als eine Webseite.
+
+**Konfiguration:** `config.mcp_servers.composio` im HelmRelease (`url`, `auth: oauth`, vorerst ohne
+`tools.exclude` – die Tool-Liste liefert der Server, Ausschlüsse nach dem ersten `hermes mcp list` nachziehen) und
+die Policy `allow-egress-to-composio` in `networkPolicy.yaml`. Die OAuth-Metadaten wurden am 2026-11-18 von außen
+geprüft (`/.well-known/oauth-protected-resource` und `/.well-known/oauth-authorization-server` auf
+`connect.composio.dev`): Issuer `connect.composio.dev`, Registrierung, Token und JWKS auf `login.composio.dev`,
+PKCE S256, Scopes `openid profile email offline_access`, nur `authorization_code`/`refresh_token`. Der Pod braucht
+also genau diese zwei Hosts auf 443; `connect.composio.dev/oauth/authorize` öffnet der Browser des Nutzers.
+Callback-URL wie bei Todoist aus `dashboard.public_url`: `https://hermes.hummler.com/api/mcp/oauth/callback/composio`.
+
+**Einmalige Einwilligung (nach dem Rollout):**
+
+1. Reconcile abwarten (`flux --context karibik reconcile ks hermes --with-source`), prüfen, dass die Policy da ist
+   (`kubectl --context karibik -n hermes get cnp allow-egress-to-composio`) und der Pod nach dem HelmRelease-Update
+   neu gestartet wurde (`config.yaml` enthält den Block: `kubectl … exec deploy/hermes -c hermes-agent -- grep -A2
+   composio /opt/data/config.yaml`).
+2. `https://hermes.hummler.com` → **MCP** → Server `composio` → **Connect**. Der Pod registriert sich per DCR bei
+   `login.composio.dev`, das Dashboard öffnet die Composio-Anmeldung (Konto anlegen oder anmelden – das ist ein
+   eigenes Composio-Konto, kein Google-Login nötig).
+3. Zugriff bestätigen, Composio leitet auf die Callback-URL zurück, das Dashboard meldet die gefundenen Tools.
+4. **Pod neu starten** (`kubectl --context karibik -n hermes rollout restart deploy/hermes`), wie bei Todoist: der
+   laufende Gateway belebt einen beim Start „geparkten“ Server nicht wieder. Dann in Telegram `/new`.
+5. Apps freischalten erst danach, bewusst einzeln, im Composio-Dashboard (dort liegen die OAuth-Tokens der
+   jeweiligen App – bei Composio, nicht auf unserer PVC). Nicht doppelt anbinden, was Hermes schon direkt kann
+   (Google Workspace, Todoist, GitHub, GitLab): sonst hat der Agent zwei Wege und nimmt unvorhersehbar mal den einen,
+   mal den anderen.
+
+Token-Dateien: `/opt/data/mcp-tokens/composio.json`, `composio.client.json`, `composio.meta.json` (Backup-TODO);
+nach Volume-Verlust Schritt 2–4 wiederholen. Trennen: Dateien löschen und im Composio-Dashboard die Verbindung
+bzw. das Konto löschen.
+
+**Prüfen:** `kubectl --context karibik -n hermes exec deploy/hermes -c hermes-agent -- sh -c 'HOME=/opt/data hermes mcp list'`
+(Server `composio` mit Auth-Status und Tool-Zahl); im Chat „Welche Apps sind in Composio verbunden?“. Bei Hängern
+`hubble observe --from-pod hermes/ --verdict DROPPED` – taucht dort ein dritter `*.composio.dev`-Host auf, die
+Policy ergänzen (Stand 2026-11-18 sind es nur die zwei oben).
 
 ### Egress erweitern (Rezept)
 
