@@ -241,7 +241,9 @@ spec:
                       'in BEIDE Richtungen synchron haelt. Lokale Aenderungen werden binnen Sekunden hochgeladen,' \
                       'Online-Aenderungen kommen alle 5 Minuten an:' \
                       '' \
-                      '- /opt/onedrive            OneDrive des Nutzers (manuel@hummler.com), komplett' \
+                      '- /opt/onedrive            OneDrive des Nutzers (manuel@hummler.com), NUR der Ordner' \
+                      '                           Bachelorarbeit (Teilsynchronisation); der Rest des OneDrive' \
+                      '                           ist hier bewusst nicht vorhanden' \
                       '- /opt/sharepoint/office   SharePoint-Site "Office", Bibliothek "Dokumente"' \
                       '- /opt/sharepoint/familie  SharePoint-Site "Familie", Bibliothek "Dokumente"' \
                       '' \
@@ -334,16 +336,6 @@ spec:
             exclude:
               - get_mcp_server_version
               - list_duo_sessions
-        # Composio (connect.composio.dev): gehosteter Meta-MCP, der Hunderte SaaS-Apps hinter einem Endpunkt
-        # buendelt; welche Apps der Agent sieht, entscheidet das Composio-Dashboard (dashboard.composio.dev),
-        # nicht Git. Kein Katalog-Eintrag in /opt/hermes/optional-mcps, Vorgabe von composio.dev/hermes:
-        # HTTP-Transport, keine Auth-Header, OAuth automatisch (DCR gegen login.composio.dev). Einwilligung
-        # einmalig im Dashboard, Token unter /opt/data/mcp-tokens/composio*.json. Egress-Policy
-        # allow-egress-to-composio. Doku 4e ("Composio"). Die Tool-Liste kommt vom Server; Ausschluesse erst
-        # nach dem ersten "hermes mcp list" festlegen.
-        composio:
-          url: https://connect.composio.dev/mcp
-          auth: oauth
 
     # config.yaml auf dem Volume bei JEDEM Start aus diesem HelmRelease neu schreiben: Git ist die Wahrheit.
     # Laufzeit-Aenderungen (z. B. /model im Chat) ueberleben damit keinen Pod-Neustart – gewollt, siehe Doku 4e.
