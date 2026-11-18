@@ -77,3 +77,4 @@ Key infrastructure components managed in this repo:
 - **Monitoring**: kube-prometheus-stack, loki-stack, metrics-server
 - **Other**: Kubernetes Dashboard, Dependency-Track, Kimai, Apicurio Studio/Registry
 - **AI**: Hermes Agent (karibik only, `hermes.hummler.com`; see `docs/clusters/gitops-karibik.md` section 4e)
+- **Dependency updates**: self-hosted Renovate (karibik only, CronJobs for GitHub + GitLab; see `docs/clusters/gitops-karibik.md` section 4f)

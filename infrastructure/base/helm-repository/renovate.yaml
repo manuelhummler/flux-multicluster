@@ -1,0 +1,11 @@
+# Offizielles Renovate-Chart (renovatebot/helm-charts) als OCI: oci://ghcr.io/renovatebot/charts/renovate.
+# Renovate bumpt die Chart-Version in den HelmReleases (Flux-Manager); das Image haengt an der appVersion.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: renovate
+  namespace: flux-system
+spec:
+  interval: 1h0m0s
+  type: oci
+  url: oci://ghcr.io/renovatebot/charts

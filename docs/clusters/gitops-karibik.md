@@ -50,6 +50,7 @@ Cluster-Secrets.
 | 2 | Plattform/Auth: keycloak (**Operator statt Bitnami**, siehe 4c), oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | **in Arbeit** – keycloak Test-Rollout erledigt 2026-11-08 (läuft parallel auf `auth.karibik.hummler.com`), oauth2-proxy/Monitoring offen |
 | 3 | Apps: vaultwarden, kimai, dtrack, apicurio, fest-der-demokratie, minecraft, hopps-* (juno-care am 2026-11-08 ersatzlos entfernt, kein Umzug) | offen |
 | neu | **Hermes Agent** (KI-Harness) unter `hermes.hummler.com`: keine Migration, Neuinstallation nur auf karibik (siehe 4e) | **läuft seit 2026-11-08**; offen: **Backup der PVC**, Egress erweitern, OIDC |
+| neu | **Renovate** (self-hosted) als CronJobs für GitHub `flux-multicluster` und GitLab `hummler-gbr/pro-makler`, ersetzt die Mend-App (siehe 4f) | **vorbereitet 2026-11-11**, Rollout offen |
 | 4 | captain-kube leerräumen & als 3. Node rejoinen; **danach** Control-Plane auf private IPs (siehe 4d) | offen |
 
 ---
@@ -900,6 +901,17 @@ Bis dahin gilt: Änderungen an `SOUL.md`/Skills sind nur auf dem Volume. Behelf:
   Init-Container `prepare-home` (busybox, UID 10000) legt es an. Diagnose: `hermes chat -q test` im Pod zeigt
   den Fehler im Klartext; `/opt/data/logs/tui_gateway_crash.log` zeigt die Reconnect-Schleife. Die alten
   Dateien aus der Volume-Wurzel (erster Start) liegen noch dort, nur `auth.json` wurde nach `home/` kopiert.
+- **Dashboard-Terminal hängt in „queued“ / „retrying in 30s“, Pod läuft seit Tagen** (2026-11-18): Variante
+  des vorigen Falls mit anderem Grund: `gateway.sock` hatte Modus `0660` statt `0600`, der TUI-Bootstrap
+  (`ui-tui/dist/scripts/gateway_bootstrap.py`) meldet `unsafe_control_permissions` und die TUI probiert es
+  endlos alle 30 s. Verursacher war der fsGroup-Durchlauf des Kubelet (`fsGroupChangePolicy` Default
+  `Always`): er setzt bei jedem Mount rekursiv `g+rw` auf alle Dateien, hier am 2026-11-13 05:50 UTC ohne
+  Pod-Neustart (Kubelet-Neustart auf barbossa-kube), erkennbar an identischer ctime aller Dateien unter
+  `/opt/data`. Sofort-Hilfe: `kubectl -n hermes exec deploy/hermes -c hermes-agent -- chmod 600
+  /opt/data/gateway.sock`, die offene TUI verbindet beim nächsten Versuch. Dauerhaft: `fsGroupChangePolicy:
+  OnRootMismatch` im `podSecurityContext` des HelmRelease (das Chart reicht den Wert durch). Diagnose
+  reproduzierbar im Pod: `cd /opt/hermes && PYTHONPATH=/opt/hermes HERMES_PYTHON_SRC_ROOT=/opt/hermes
+  /opt/hermes/.venv/bin/python ui-tui/dist/scripts/gateway_bootstrap.py --start` zeigt den Grund im Klartext.
 - **Image 2,2 GB**: erster Pull dauert, dazu der Skills-Sync beim ersten Start. HelmRelease- und
   Kustomization-Timeout stehen deshalb auf 15 Minuten.
 - **Dashboard „fails closed“**: fehlen die `HERMES_DASHBOARD_BASIC_AUTH_*`-Variablen, startet der
@@ -914,6 +926,133 @@ Bis dahin gilt: Änderungen an `SOUL.md`/Skills sind nur auf dem Volume. Behelf:
 - **Namen**: Deployment, Service, ServiceAccount und PVC heißen alle `hermes` (`fullnameOverride`),
   die Container heißen `seed-config`, `auth-device-login` (Init) und `hermes-agent`, das SOPS-Secret
   `hermes-secrets`, das Chart-Secret `hermes-env`.
+
+## 4f. Renovate (self-hosted) – Abhängigkeits-Updates für GitHub und GitLab
+
+Renovate läuft als **CronJob auf karibik** und ersetzt die Mend-Renovate-App auf GitHub. Zwei Instanzen
+aus demselben Chart, weil Renovate pro Lauf nur eine Plattform bedient:
+
+| Instanz (HelmRelease) | Plattform | Repos | Zeitplan |
+| --- | --- | --- | --- |
+| `renovate-github` | github.com | `manuelhummler/flux-multicluster` | stündlich um :05 |
+| `renovate-gitlab` | gitlab.com | `hummler-gbr/pro-makler` | stündlich um :35 |
+
+### Entscheidungen (2026-11-11)
+
+| Thema | Entscheidung | Begründung |
+| ----- | ------------ | ---------- |
+| Chart | Offizielles Chart [renovatebot/helm-charts](https://github.com/renovatebot/helm-charts) `46.422.2` als OCI (`oci://ghcr.io/renovatebot/charts`), Image `ghcr.io/renovatebot/renovate` = `appVersion` (`44.227.4`) | Upstream-Chart, schlank (CronJob + ConfigMap). Renovate bumpt sich selbst; weil das Chart mehrmals täglich erscheint, begrenzt eine `packageRule` in `renovate.json` die Bumps auf Montag früh. |
+| Betriebsmodell | CronJob, **kein** Webhook/Ingress | Kein öffentlicher Endpunkt nötig. Nachteil: Reaktion auf Checkboxen im Dependency-Dashboard/MR erst beim nächsten Lauf (≤ 1 h). |
+| Repos | **feste Liste** (`repositories`), kein `autodiscover` | Nichts passiert ungeplant, auch wenn das Token mehr Repos sehen kann. Neues Repo = Eintrag im HelmRelease. |
+| Konfiguration | Global (Admin) im HelmRelease als `config.js`, Repo-Regeln bleiben im jeweiligen Repo (`renovate.json`) | `config.js` liest Tokens aus Umgebungsvariablen – nichts Geheimes in der ConfigMap. `requireConfig: required` + `onboarding: true`: ohne Repo-Config gibt es nur einen Onboarding-PR/-MR. |
+| Secrets | Je Instanz eine SOPS-Datei im Overlay → Secret → `envFrom` | Muster wie hermes. `GHCR_TOKEN` wird über `secrets` in der globalen Config bereitgestellt, damit `{{ secrets.GHCR_TOKEN }}` in `renovate.json` unverändert funktioniert (vorher Mend-App-Secret). |
+| Commits (GitHub) | `platformCommit: enabled` | Commits über die API, von GitHub als „Verified“ signiert, Autor ist der Token-Besitzer. |
+| Egress | Entity `world` auf TCP 443, sonst default-deny | Renovate fragt jede Registry, jedes Helm-Repo und jede Paketquelle der Repos ab und lädt Tools nach – eine FQDN-Allowlist würde bei jeder neuen Abhängigkeit still brechen. `world` schließt kube-apiserver und Cluster-Pods aus. |
+| Pod Security | Namespace `renovate` mit PSS `restricted`, UID 12021 (User des Images), kein SA-Token (postRenderer) | Root-FS bleibt beschreibbar: containerbase installiert node/helm/… zur Laufzeit. |
+| Cache | keiner (kein PVC) | Jeder Lauf klont frisch; bei zwei kleinen Repos unkritisch. Bei Bedarf `renovate.persistence.cache` (Longhorn). |
+
+### Aufbau
+
+| Datei | Inhalt |
+| --- | --- |
+| [base/helm-repository/renovate.yaml](../../infrastructure/base/helm-repository/renovate.yaml) | OCI-HelmRepository (landet per Kustomize-`namespace` im Namespace `renovate`) |
+| [base/apps/renovate/](../../infrastructure/base/apps/renovate/) | Namespace (PSS restricted), HelmReleases `renovate-github`/`renovate-gitlab`, CiliumNetworkPolicy, default-deny |
+| [karibik/renovate/](../../infrastructure/karibik/renovate/) | Overlay + Secrets `renovate-github-env`/`renovate-gitlab-env` aus `*-encrypted.env` (SOPS); Vorlagen `*.env.example` |
+| [clusters/karibik/infrastructure.yaml](../../clusters/karibik/infrastructure.yaml) | Kustomization `renovate` (keine Abhängigkeiten, Healthchecks auf beide HelmReleases) |
+| [renovate.json](../../renovate.json) | neue `packageRule`: Bumps des Renovate-Charts nur montags vor 6 Uhr |
+
+### Schritt 1 – Tokens anlegen
+
+**GitHub** (`RENOVATE_TOKEN` der Instanz `renovate-github`): eigener **Bot-Account**, PRs und Commits
+erscheinen unter diesem Account statt unter `manuelhummler`.
+
+1. Mit deinem Account: `flux-multicluster` → Settings → Collaborators → Bot einladen, Rolle **Write**.
+   Einladung mit dem Bot-Account annehmen (E-Mail oder github.com/notifications).
+2. Mit dem Bot-Account: Settings → Developer settings → Personal access tokens → **Tokens (classic)** →
+   Scopes **`repo`** und **`workflow`**, Ablaufdatum setzen und notieren.
+
+Warum classic: Ein fine-grained PAT kann nur Repos seines eigenen Owners (User oder Organisation) auswählen.
+Als Collaborator auf einem fremden **persönlichen** Repo taucht `flux-multicluster` dort nicht auf. Der classic
+PAT gilt zwar für alle Repos des Bots, der hat aber nur dieses eine. `workflow` ist nötig, weil Renovate
+`.github/workflows/` (MegaLinter-Action) aktualisiert, sonst lehnt GitHub den Push ab.
+Lege das Repo später in eine Organisation, geht auch ein fine-grained PAT des Bots (Contents, Pull requests,
+Issues, Workflows: Read and write; Commit statuses, Checks: Read).
+
+**GHCR** (`GHCR_TOKEN`): der Lese-Token für `ghcr.io/open-project-e-v/fest-der-demokratie` (classic PAT
+`read:packages` des Accounts `blackwolfk-9`, wie bisher in der Mend-App hinterlegt).
+
+**GitLab** (`RENOVATE_TOKEN` der Instanz `renovate-gitlab`): Personal Access Token mit `api`, `read_user`,
+`write_repository` eines Users, der in `hummler-gbr/pro-makler` mindestens *Developer* ist (Project/Group
+Access Tokens gibt es auf gitlab.com nur in bezahlten Tiers). Ablaufdatum notieren – GitLab-PATs laufen
+spätestens nach einem Jahr ab.
+
+**GitHub lesend** (`GITHUB_COM_TOKEN` der GitLab-Instanz): Fine-grained PAT ohne Repo-Zugriff
+(„Public repositories (read-only)“). Ohne Token gilt das anonyme Limit von 60 Requests/Stunde für Changelogs
+und `github-releases`-Lookups; Feld leer lassen geht trotzdem.
+
+### Schritt 2 – Secrets befüllen (vor dem Push)
+
+Die verschlüsselten Dateien enthalten Platzhalter (`REPLACE_ME`):
+
+```bash
+sops infrastructure/karibik/renovate/renovate-github-env-encrypted.env
+```
+
+```bash
+sops infrastructure/karibik/renovate/renovate-gitlab-env-encrypted.env
+```
+
+### Schritt 3 – Mend-App für flux-multicluster abschalten (vor dem ersten Lauf)
+
+Sonst arbeiten zwei Renovates am selben Repo. GitHub → Settings → Applications → *Renovate* → Configure →
+`flux-multicluster` aus der Repo-Auswahl entfernen (oder App deinstallieren).
+
+Offene PRs und das Dependency-Dashboard-Issue der App gehören `renovate[bot]`. Der neue Renovate findet die
+Branches gleichen Namens, sieht aber einen fremden Autor und fasst sie als „manuell bearbeitet“ nicht mehr an.
+Daher: offene Renovate-PRs schließen (Branches löschen) und das alte Dashboard-Issue schließen – der erste Lauf
+legt beides neu an.
+
+### Schritt 4 – Rollout und erster Lauf
+
+```bash
+flux reconcile kustomization renovate --with-source
+```
+
+```bash
+kubectl -n renovate get helmrelease,cronjob
+```
+
+Ersten Lauf nicht abwarten, sondern sofort aus dem CronJob starten und die Logs ansehen:
+
+```bash
+kubectl -n renovate create job --from=cronjob/renovate-github renovate-github-manual
+```
+
+```bash
+kubectl -n renovate logs -f job/renovate-github-manual
+```
+
+Danach dasselbe mit `renovate-gitlab`. Erwartet: GitHub → neue PRs/Dashboard-Issue unter dem Token-Account;
+GitLab → Onboarding-MR „Configure Renovate“ in `pro-makler` (enthält eine `renovate.json`, nach dem Merge
+kommen die eigentlichen Update-MRs). Die manuellen Jobs danach löschen
+(`kubectl -n renovate delete job renovate-github-manual`).
+
+### Weiteres Repo hinzufügen
+
+Repo in `repositories` des passenden HelmReleases ergänzen und dem Token Zugriff geben (fine-grained PAT:
+Repository access erweitern). Ein Repo ohne Renovate-Config bekommt zuerst einen Onboarding-PR.
+
+### Stolpersteine
+
+- **Private Registry in pro-makler**: Nutzt das Repo eigene Images aus `registry.gitlab.com`, braucht Renovate
+  dafür eine `hostRule` (z. B. in der `renovate.json` von pro-makler mit `{{ secrets.… }}` plus Eintrag unter
+  `secrets` in der globalen Config der GitLab-Instanz). Symptom sonst: „Failed to look up docker package“.
+- **Lookup-Fehler wegen Egress**: Nur 443 ist offen. Ein Helm-Repo über reines HTTP oder ein Git-Zugriff
+  per SSH (Port 22) schlägt fehl – in Hubble als Drop im Namespace `renovate` sichtbar.
+- **Token abgelaufen**: Job endet mit `Authentication failure` bzw. `401`; neuen Token per `sops` eintragen,
+  pushen, Lauf manuell starten.
+- **Job läuft länger als 50 Minuten**: `activeDeadlineSeconds: 3000` bricht ab, `concurrencyPolicy: Forbid`
+  verhindert parallele Läufe derselben Instanz.
 
 ## 5. Rezept: weitere App nach karibik holen (Phase 1-3)
 

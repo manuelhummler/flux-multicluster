@@ -1,0 +1,87 @@
+# Renovate (self-hosted) fuer GitLab.com: hummler-gbr/pro-makler.
+# Entscheidungen und Betrieb: docs/clusters/gitops-karibik.md, Abschnitt 4f.
+#
+# Gleiches Chart wie renovate-github, eigene Instanz: Renovate kann pro Lauf nur eine Plattform.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: renovate-gitlab
+spec:
+  interval: 1h0m0s
+  chart:
+    spec:
+      chart: renovate
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: renovate
+      version: 46.422.2
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  postRenderers:
+    - kustomize:
+        patches:
+          # Kein Zugriff auf die Kubernetes-API noetig (siehe renovate-github).
+          - target:
+              kind: CronJob
+            patch: |
+              - op: add
+                path: /spec/jobTemplate/spec/template/spec/automountServiceAccountToken
+                value: false
+  values:
+    fullnameOverride: renovate-gitlab
+
+    cronjob:
+      # :35 jeder Stunde (GitHub um :05)
+      schedule: "35 * * * *"
+      timeZone: Europe/Berlin
+      concurrencyPolicy: Forbid
+      activeDeadlineSeconds: 3000
+      jobBackoffLimit: 1
+      successfulJobsHistoryLimit: 1
+      failedJobsHistoryLimit: 3
+
+    renovate:
+      configIsJavaScript: true
+      config: |
+        module.exports = {
+          platform: 'gitlab',
+          endpoint: 'https://gitlab.com/api/v4/',
+          repositories: ['hummler-gbr/pro-makler'],
+          // erster Lauf oeffnet einen Onboarding-MR "Configure Renovate" mit einer renovate.json
+          onboarding: true,
+          requireConfig: 'required',
+          // Lesender GitHub-Token fuer Changelogs/Release-Notes und github-releases/-tags-Lookups;
+          // ohne Token greift das anonyme Rate-Limit von 60 Requests/Stunde.
+          hostRules: process.env.GITHUB_COM_TOKEN
+            ? [{ matchHost: 'api.github.com', token: process.env.GITHUB_COM_TOKEN }]
+            : [],
+        };
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+
+    # RENOVATE_TOKEN (GitLab-PAT) und GITHUB_COM_TOKEN aus dem SOPS-Secret im Overlay (envFrom).
+    existingSecret: renovate-gitlab-env
+
+    env:
+      LOG_LEVEL: info
+
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 12021
+      seccompProfile:
+        type: RuntimeDefault
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi

@@ -1,0 +1,24 @@
+# Cilium-Policies fuer Renovate. Grundlage: default-deny aus base/ciliumNetworkPolicy (alles zu ausser DNS).
+# Kein Ingress: Renovate laeuft als CronJob, ohne Webhook/Service.
+#
+# Egress bewusst NICHT per toFQDNs-Allowlist: Renovate spricht mit GitHub/GitLab (API + git ueber HTTPS),
+# allen Registries und Helm-Repos, die in den Repos vorkommen (ghcr.io, docker.io samt CDN, quay.io,
+# registry.k8s.io, *.github.io, …), mit Paket-Registries von pro-makler (npm, Maven, …) und laedt Tools
+# (containerbase) von GitHub-Releases/nodejs.org nach. Jede neue Abhaengigkeit wuerde sonst einen
+# stillen Lookup-Fehler erzeugen. Daher: Internet (Entity "world") nur auf 443.
+# "world" umfasst weder den kube-apiserver noch Cluster-Pods (eigene Entities) – beides bleibt zu.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-to-internet-https
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: renovate
+  egress:
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
