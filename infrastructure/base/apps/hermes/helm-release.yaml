@@ -87,7 +87,7 @@ spec:
                 path: /spec/template/spec/initContainers/0
                 value:
                   name: prepare-home
-                  image: busybox:1.37
+                  image: busybox:1.38
                   command: ["sh", "-c", "set -e; for n in onedrive office familie; do for d in /pvc-m365/$n/data /pvc-m365/$n/conf; do mkdir -p $d && chmod 700 $d; done; done; mkdir -p /pvc/home && chmod 700 /pvc/home; ls -ldn /pvc/home /pvc-m365/*/*"]
                   securityContext:
                     runAsNonRoot: true
