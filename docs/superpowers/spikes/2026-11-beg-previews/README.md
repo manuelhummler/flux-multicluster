@@ -84,49 +84,16 @@ räumt der Aufräum-Job nicht ab (Client heißt nicht `beg-<id>-crm`) – von Ha
 Frage: Baut BuildKit rootless oder Buildah das Backend-Image (`source/Dockerfile`, nutzt `RUN --mount=type=cache`)
 unter den Runner-Regeln (kein privileged, Namespace PSS baseline)?
 
-Ablauf: Branch `spike/rootless-build` in beg-verwaltung mit nur diesen zwei Jobs in `.gitlab-ci.yml` pushen
-(kein MR nötig), Logs prüfen.
+Ablauf: Branch `spike/rootless-build` in beg-verwaltung (Worktree `D:/Workspace/beg-project/beg-verwaltung-spike`,
+von `origin/main`), dessen `.gitlab-ci.yml` nur drei Spike-Jobs enthält (kein MR nötig, `workflow:rules` nur für
+diesen Branch):
 
-```yaml
-stages: [spike]
+- `spike_probe` (alpine): Capabilities, Seccomp, AppArmor-Profil, User-Namespaces des Job-Pods
+- `spike_buildkit`: `moby/buildkit:v0.35.1-rootless`, `buildctl-daemonless.sh` mit
+  `BUILDKITD_FLAGS=--oci-worker-no-process-sandbox`, pusht `ci/spike:buildkit-<sha>`
+- `spike_buildah`: `quay.io/buildah/stable:v1.46.1`, `vfs` + `--isolation chroot`, pusht `ci/spike:buildah-<sha>`
 
-.registry_auth: &registry_auth |
-  mkdir -p ~/.docker
-  printf '{"auths":{"%s":{"auth":"%s"}}}' "$CI_REGISTRY" "$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')" > ~/.docker/config.json
-
-spike_buildkit:
-  stage: spike
-  tags: [karibik]
-  image:
-    name: moby/buildkit:v0.26.2-rootless
-    entrypoint: [""]
-  variables:
-    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
-    KUBERNETES_MEMORY_LIMIT: "6Gi"
-  script:
-    - *registry_auth
-    - printf 'premiumRepoPass=%s\n' "$(cat /gradle-secrets/premiumRepoPass)" > /tmp/gradle-secret.properties
-    - >
-      buildctl-daemonless.sh build --frontend dockerfile.v0
-      --local context=source --local dockerfile=source
-      --output type=image,name=$CI_REGISTRY_IMAGE/ci/spike:buildkit-$CI_COMMIT_SHORT_SHA,push=true
-
-spike_buildah:
-  stage: spike
-  tags: [karibik]
-  image: quay.io/buildah/stable:v1.42
-  variables:
-    STORAGE_DRIVER: vfs
-    BUILDAH_ISOLATION: chroot
-    KUBERNETES_MEMORY_LIMIT: "6Gi"
-  script:
-    - buildah login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-    - buildah build -t $CI_REGISTRY_IMAGE/ci/spike:buildah-$CI_COMMIT_SHORT_SHA source
-    - buildah push $CI_REGISTRY_IMAGE/ci/spike:buildah-$CI_COMMIT_SHORT_SHA
-```
-
-Hinweise: Das Dockerfile kopiert heute `gradle.properties` aus dem Kontext (in der alten Pipeline per `cp` aus
-`/root/.gradle`). Für den Spike reicht es, dass der Build bis zum Gradle-Schritt kommt; Jmix-premium-Zugriff
-klärt Task 10 (Build-Secret). Image-Versionen vor dem Push auf aktuelle Tags prüfen.
+Beide Builds bauen `source/` (Backend, `RUN --mount=type=cache`). `premiumRepoPass` kommt aus `/gradle-secrets` des
+Runners und wird nur für die Build-Stage an `source/gradle.properties` angehängt.
 
 **Ergebnis:** _(offen)_
