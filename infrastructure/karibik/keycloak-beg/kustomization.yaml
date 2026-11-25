@@ -15,12 +15,15 @@ resources:
   - cleanup-secret-encrypted.yaml
   # Stuendlicher Aufraeum-Job (Nutzer/Clients verschwundener Previews)
   - cleanup-cronjob.yaml
+  # Scope beg-roles + User-Profile-Policy nach dem Realm-Import (idempotent)
+  - realm-setup-job.yaml
 generatorOptions:
   disableNameSuffixHash: true
 configMapGenerator:
   - name: beg-preview-cleanup
     files:
       - cleanup/cleanup.py
+      - cleanup/realm_setup.py
 secretGenerator:
   # DB-Zugang: dieselbe SOPS-Datei wie die CNPG-Rolle beg-keycloak
   - name: beg-keycloak-db

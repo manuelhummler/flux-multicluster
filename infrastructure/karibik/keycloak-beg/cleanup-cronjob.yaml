@@ -102,9 +102,12 @@ kind: CiliumNetworkPolicy
 metadata:
   name: allow-egress-from-beg-preview-cleanup
 spec:
+  # Aufraeum-CronJob und Realm-Setup-Job (realm-setup-job.yaml)
   endpointSelector:
-    matchLabels:
-      app.kubernetes.io/name: beg-preview-cleanup
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [beg-preview-cleanup, beg-realm-setup]
   egress:
     - toEndpoints:
         - matchLabels:
@@ -130,8 +133,10 @@ spec:
       app.kubernetes.io/instance: beg
   ingress:
     - fromEndpoints:
-        - matchLabels:
-            app.kubernetes.io/name: beg-preview-cleanup
+        - matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values: [beg-preview-cleanup, beg-realm-setup]
       toPorts:
         - ports:
             - port: "8080"

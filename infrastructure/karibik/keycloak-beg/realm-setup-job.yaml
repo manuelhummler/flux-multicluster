@@ -1,0 +1,65 @@
+# Realm-Setup nach dem Import (Doku 4j): Client-Scope beg-roles als Realm-Default + User-Profile-Policy ADMIN_EDIT
+# (Begruendung in cleanup/realm_setup.py). Idempotent. Wartet per backoffLimit, bis der Realm-Import fertig ist.
+# Neu ausfuehren: Job loeschen (kubectl -n keycloak delete job beg-realm-setup) – Flux legt ihn wieder an.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: beg-realm-setup
+  annotations:
+    # Job-Spec ist unveraenderlich: bei Aenderungen ersetzt Flux den Job statt am Update zu scheitern
+    kustomize.toolkit.fluxcd.io/force: enabled
+spec:
+  backoffLimit: 20
+  activeDeadlineSeconds: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: beg-realm-setup
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          image: python:3.13-alpine
+          command: ["python", "/app/realm_setup.py"]
+          env:
+            - name: KEYCLOAK_URL
+              value: http://beg-service.keycloak.svc.cluster.local:8080
+            - name: REALM
+              value: beg
+            - name: ADMIN_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: beg-admin
+                  key: client-id
+            - name: ADMIN_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: beg-admin
+                  key: client-secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: app
+              mountPath: /app
+              readOnly: true
+      volumes:
+        - name: app
+          configMap:
+            name: beg-preview-cleanup

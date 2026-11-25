@@ -6,8 +6,8 @@
 # Inhalt:
 # - Realm-Rollen = Jmix-Rollen-Codes (jmix.oidc.default-claims-roles-mapper.roles-claim-name=roles) + portal-user
 # - Gruppen <tenant>_member / <tenant>_admin / global_admin (KeyCloakService; Tenant der Previews = "preview")
-# - Client-Scope beg-roles als Default-Scope: KeycloakOIDCClient kennt keine Protocol-Mapper, neue Clients
-#   erben den roles-Claim so automatisch
+# - KEINE eigenen clientScopes: sonst legt Keycloak die eingebauten (profile, email, roles, ...) nicht an.
+#   Scope beg-roles (roles-Claim) und User-Profile-Policy setzt der Job realm-setup-job.yaml nach dem Import.
 # - Client beg-e2e-admin (Service-Account, nur Nutzerverwaltung) fuer die E2E-Suite (Secret in der CI)
 # - Client beg-preview-cleanup (Service-Account, Nutzer + Clients) nur fuer den Aufraeum-CronJob im Cluster
 # - Feste Testnutzer = die ausgedachten Nutzer der Demo-Datenbank (Stand 20261111_104103), mit DENSELBEN IDs wie
@@ -65,32 +65,6 @@ spec:
       - admin
       - system-full-access
       - bpm-process-task-performer
-    clientScopes:
-    - name: beg-roles
-      protocol: openid-connect
-      description: Realm-Rollen als Claim roles (Jmix roles-claim-name)
-      attributes:
-        include.in.token.scope: 'false'
-      protocolMappers:
-      - name: realm-roles-to-roles-claim
-        protocol: openid-connect
-        protocolMapper: oidc-usermodel-realm-role-mapper
-        consentRequired: false
-        config:
-          multivalued: 'true'
-          userinfo.token.claim: 'true'
-          id.token.claim: 'true'
-          access.token.claim: 'true'
-          claim.name: roles
-          jsonType.label: String
-    defaultDefaultClientScopes:
-    - basic
-    - profile
-    - email
-    - roles
-    - web-origins
-    - acr
-    - beg-roles
     clients:
     - clientId: beg-e2e-admin
       name: BEG E2E admin (Testnutzer anlegen/loeschen)
