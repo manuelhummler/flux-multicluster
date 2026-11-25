@@ -50,7 +50,7 @@ Cluster-Secrets.
 | 2 | Plattform/Auth: keycloak (**Operator statt Bitnami**, siehe 4c), oauth2-proxy, Monitoring-Stack (Grafana-OAuth) | **in Arbeit** – keycloak Test-Rollout erledigt 2026-11-08 (läuft parallel auf `auth.karibik.hummler.com`), oauth2-proxy/Monitoring offen |
 | 3 | Apps: vaultwarden, kimai, dtrack, apicurio, minecraft, hopps-* (juno-care am 2026-11-08 ersatzlos entfernt, kein Umzug; fest-der-demokratie am 2026-11-18 ersatzlos entfernt – `fest-der-demokratie.de` zeigte schon auf einen fremden Server `23.88.102.169`, captain-kube bekam keinen Traffic mehr) | offen |
 | neu | **Hermes Agent** (KI-Harness) unter `hermes.hummler.com`: keine Migration, Neuinstallation nur auf karibik (siehe 4e) | **läuft seit 2026-11-08**; offen: **Backup der PVC**, Egress erweitern, OIDC |
-| neu | **Renovate** (self-hosted) als CronJobs für GitHub `flux-multicluster` und GitLab `hummler-gbr/pro-makler`, ersetzt die Mend-App (siehe 4f) | **vorbereitet 2026-11-11**, Rollout offen |
+| neu | **Renovate** (self-hosted) als CronJobs für GitHub `flux-multicluster` und GitLab `hummler-gbr/pro-makler`, ersetzt die Mend-App (siehe 4f) | **läuft seit 2026-11-18** (Bot `manuel-bot-user`); Mend-App am 2026-11-19 entfernt, ihre PRs/Branches/Dashboard geschlossen; offen: Onboarding-MR !1 in pro-makler mergen |
 | 4 | captain-kube leerräumen & als 3. Node rejoinen; **danach** Control-Plane auf private IPs (siehe 4d) | offen |
 
 ---
@@ -482,6 +482,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | Langzeit-Memory | **Hindsight** (self-hosted, Namespace `hindsight`) als Memory-Provider-Plugin; eingebautes Memory bleibt aktiv – siehe **4g** | Entscheidung 2026-11-18 nach Vergleich mit Honcho (Persönlichkeitsmodell, Cloud oder bezahlter API-Key), hwiki (Markdown, kein LLM) und den gehosteten Anbietern: Fakten-/Entitäts-Graph mit zeitlicher Suche passt zu einem Assistenten für Projekte, Server und Termine; ChatGPT-Abo nutzbar, offene UI, alles im Cluster. |
 | Weitere Modelle | Zweiter Anbieter **regio-ai** (OpenAI-kompatibel: `kimi-k3`, `glm-5.3`, `deepseek-v41-flash`, `auto`) als `providers.regio-ai`; Fallback-Kette `fallback_model` (kimi-k3, dann glm-5.3) hinter Codex; Subagenten (`delegation`) auf `deepseek-v41-flash`; Egress `workspace.regio-ai.eu` | Entscheidung 2026-11-18. Entlastet das geteilte ChatGPT-Limit (Hermes + Hindsight) und hält den Agenten bei Codex-Ausfall antwortfähig. Basis-URL (mit Tenant-ID) in cluster-secrets, Key in hermes-secrets über `key_env`. Details unten „Weitere Modelle“. |
 | Odoo | Eigenes Skill `odoo` (XML-RPC, Standardbibliothek) gegen Odoo Online `beg-paf.odoo.com` mit API-Key eines eigenen Benutzers; Zugangsdaten als Datei im Agenten-HOME; Löschen/Buchen nur mit `--yes`; Egress `beg-paf.odoo.com` | Entscheidung 2026-11-18. Kein Modul installierbar (Online), kein Hermes-Katalogeintrag, Drittanbieter-MCPs wären Fremdcode. Nutzer wollte Vollzugriff: Grenze ist der Odoo-Benutzer. Details unten „Odoo“. |
+| Lexware Office | Nur Zugang aus Git (`LEXOFFICE_API_KEY` → Datei im Agenten-HOME, Egress `api.lexoffice.io`); das Skill schreibt Hermes selbst auf die PVC | Entscheidung 2026-11-25. Schneller Start, Nachbessern im Dialog; nicht in Git/Backup – bei Bewährung wie `odoo` ins Repo. Details unten „Lexware Office“. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
 
 ### Aufbau
@@ -1093,6 +1094,35 @@ Gratis-Tarif). `Zugangsdaten fehlen` → `ODOO_*` unvollständig, Init-Container
 letzte Zeile des Server-Tracebacks (`Odoo-Fehler bei <modell>.<methode>: …`), meist ein Rechte- oder Pflichtfeld-
 Problem; `fields <modell> --filter` zeigt Pflichtfelder (`required`). Datetime-Werte sind UTC.
 
+### Lexware Office (lexoffice, Hummler Consulting)
+
+Buchhaltung von Hummler Consulting. Entscheidung 2026-11-25: **nur der Zugang kommt aus Git**, das Skill
+schreibt Hermes selbst (auf Zuruf des Nutzers, unter `/opt/data/skills/business/lexoffice/`, liegt auf der
+PVC). Begründung: schneller Start, Hermes kann das Skript im Dialog nachbessern; Preis ist, dass das Skill
+weder in Git noch im Backup liegt (die Hermes-PVC hat noch kein Backup-Ziel) – bewährt es sich, wandert es wie
+`odoo` als ConfigMap ins Repo.
+
+| Baustein | Ort |
+| --- | --- |
+| Key | `LEXOFFICE_API_KEY` in `hermes-env-encrypted.env` (Lexware Office: Einstellungen → Public API → Schlüssel erzeugen; gilt für das ganze Konto, keine Rechtetrennung) |
+| Zugang in der Agenten-Shell | `install-extras` schreibt `/opt/data/home/.config/lexoffice/credentials.json` (0600, Felder `api_key`, `base_url`); ohne Wert wird die Datei entfernt |
+| Egress | `allow-egress-to-lexoffice` (`api.lexoffice.io`, 443) |
+| Regeln für den Agenten | HERMES.md: Key nie wiedergeben, Skill liest die Datei; Rechnungen/Angebote **nur als Entwurf** (`finalize=false`, nie finalisieren, nie versenden), Belege **nur per `/files` hochladen** (landen unverbucht in der Belegablage), Schreiben nur auf Anweisung |
+
+**Rechte:** Lexware-Office-Keys kennen keine Stufen, jeder Key kann alles, was das Konto kann (Rechnungen
+finalisieren, Belege verbuchen, Kontakte löschen). Die gewünschte Grenze „Schreiben ja, aber nur Entwürfe und
+Belegupload“ (Nutzer, 2026-11-25) liegt deshalb im Skill (keine Befehle für `finalize=true`, keine `POST /vouchers`,
+kein `DELETE`) und in HERMES.md. Versand per E-Mail ist über die API ohnehin nicht möglich.
+
+Einrichten: Key eintragen (`sops infrastructure/karibik/hermes/hermes-env-encrypted.env`), Push, dann im Chat:
+„Lege ein Skill lexoffice unter skills/business/lexoffice an. Key aus ~/.config/lexoffice/credentials.json,
+API https://api.lexoffice.io/v1 (Header Authorization: Bearer, Accept: application/json, Rate-Limit 2/s).
+Befehle: contacts, invoices, quotations, voucherlist, voucher-get, files-upload; Rechnungen und Angebote nur
+mit finalize=false anlegen, Belege nur per POST /files hochladen, keine Lösch- oder Finalisierungsbefehle.“
+Prüfen mit `hermes skills list` bzw. einer Testfrage („Welche Rechnungen sind offen?“).
+
+API-Grenzen: keine Mahnungen, kein DATEV-Export, kein E-Mail-Versand; Rate-Limit 2 Anfragen/s.
+
 ### Egress erweitern (Rezept)
 
 Alle Policies liegen in [base/apps/hermes/networkPolicy.yaml](../../infrastructure/base/apps/hermes/networkPolicy.yaml),
@@ -1313,6 +1343,11 @@ Offene PRs und das Dependency-Dashboard-Issue der App gehören `renovate[bot]`. 
 Branches gleichen Namens, sieht aber einen fremden Autor und fasst sie als „manuell bearbeitet“ nicht mehr an.
 Daher: offene Renovate-PRs schließen (Branches löschen) und das alte Dashboard-Issue schließen – der erste Lauf
 legt beides neu an.
+
+**Erledigt am 2026-11-19:** Weil die App beim ersten Lauf des Bots noch aktiv war, liefen beide einen Tag
+parallel. Danach App entfernt, alle offenen PRs von `app/renovate` samt Branches geschlossen, dazu verwaiste
+`renovate/*`-Branches ohne PR (letzter Commit `renovate[bot]`) gelöscht und das alte Dashboard (#2) geschlossen.
+Das Dashboard des Bots ist #158.
 
 ### Schritt 4 – Rollout und erster Lauf
 
