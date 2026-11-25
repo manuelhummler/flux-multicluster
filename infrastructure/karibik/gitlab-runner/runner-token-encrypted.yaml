@@ -1,0 +1,27 @@
+# Runner-Auth-Token des Gruppen-Runners hummler-gbr (GitLab: Gruppe -> Build -> Runners -> New group runner).
+# Wird vom HelmRelease gitlab-runner ueber runners.secret referenziert. runner-registration-token bleibt leer
+# (alter Registrierungsweg, bei glrt-Tokens nicht mehr genutzt, das Chart erwartet den Key aber).
+apiVersion: v1
+kind: Secret
+metadata:
+    name: gitlab-runner-token
+    namespace: gitlab-runner
+type: Opaque
+stringData:
+    runner-token: ENC[AES256_GCM,data:HWKflRIlqrIck008IHmN+QNJtBLfqekMfVfe+EXZeIxLyVqvVcDpf2IPlX/ZDmVCjtNZMYQZ4NBP61d/DH/92ZZKQTq2bdiT0UnA0pA=,iv:aOpRVXb1NwsKoHeU0lt3NAyUWtlBRw/pAj5GNCzjFW8=,tag:6YXiOK4xxwxtPvIRlyXPgQ==,type:str]
+    runner-registration-token: ""
+sops:
+    age:
+        - recipient: age1ffsgx4kzutechq3p20sxxc8x4p2zg8xvwmzj6dhercecec543dtsdq27ka
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBvSE8xL3lVNUN0S3pYWStT
+            dVppaktqeXlDYmY2N2hZbWpMN1pOdjVzeEVNCjFJNXEyS05JYkhxakdCTW9zVzBP
+            djY3Q3F6Z0k0aFVoWnNvTlE5TmsybWcKLS0tIGwvVVJDd25FVkR2YStuaEVDZ2tO
+            T0tEMldCVkZrdTUxcGtSUG1XbENTbDgKSMjwOTlm1PGXIrdikQE8C0ZtRjpsNqoQ
+            cejFY1loyr8T6pCv5qy83hmhVSsm23xxquFssuEZhA9XHSPIeI2wQQ==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2026-11-25T17:51:55Z"
+    mac: ENC[AES256_GCM,data:0vMO1ADUv2eChqCbG8YOfDmmU8qa6KKL996wvs50F8HZIMrs/LoGu1aLLd8DoUSaBy9IcBYpABU/C00fnv6gKh/xz2ZwV6ThtQB+avmiXY1Sj7I62AAo42DUP7gM//7N773qF7KHEMd1/z01ia5OztG+jASUkCwDPer15lYUUjo=,iv:nrphP2+/BF0DnLcZeAd7l4Hm2Mx3C3XpkgC+76KwvkA=,tag:qbe5vGl4G+wMBPJQe//Zsw==,type:str]
+    encrypted_regex: ^(data|stringData)$
+    version: 3.12.1

@@ -51,6 +51,7 @@ Cluster-Secrets.
 | 3 | Apps: vaultwarden, kimai, dtrack, apicurio, minecraft, hopps-* (juno-care am 2026-11-08 ersatzlos entfernt, kein Umzug; fest-der-demokratie am 2026-11-18 ersatzlos entfernt – `fest-der-demokratie.de` zeigte schon auf einen fremden Server `23.88.102.169`, captain-kube bekam keinen Traffic mehr) | offen |
 | neu | **Hermes Agent** (KI-Harness) unter `hermes.hummler.com`: keine Migration, Neuinstallation nur auf karibik (siehe 4e) | **läuft seit 2026-11-08**; offen: **Backup der PVC**, Egress erweitern, OIDC |
 | neu | **Renovate** (self-hosted) als CronJobs für GitHub `flux-multicluster` und GitLab `hummler-gbr/pro-makler`, ersetzt die Mend-App (siehe 4f) | **läuft seit 2026-11-18** (Bot `manuel-bot-user`); Mend-App am 2026-11-19 entfernt, ihre PRs/Branches/Dashboard geschlossen; offen: Onboarding-MR !1 in pro-makler mergen |
+| neu | **GitLab Runner** (Gruppen-Runner `hummler-gbr`, Kubernetes-Executor, `concurrent: 10`), siehe 4h | **vorbereitet 2026-11-25**; offen: Runner in GitLab anlegen, Token per sops eintragen, Push |
 | 4 | captain-kube leerräumen & als 3. Node rejoinen; **danach** Control-Plane auf private IPs (siehe 4d) | offen |
 
 ---
@@ -471,6 +472,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | Sprachnachrichten | `stt.provider: local` (faster-whisper, Modell `small`, Sprache automatisch) | Self-hosted statt Cloud-STT (Groq/OpenAI bräuchten eigenen Key, OpenAI-STT läuft nicht über den Codex-Login). Node hat 16 Kerne/64 GB, Pod-Limit 2 Gi reicht für `small` (int8). |
 | config.yaml | `bootstrap.overwrite: true` – das Chart schreibt `config.yaml` bei jedem Start aus dem HelmRelease neu | Git ist die Wahrheit; Laufzeit-Änderungen (z. B. `/model` im Chat) überleben keinen Pod-Neustart. Dauerhafte Änderungen gehören ins HelmRelease. |
 | Python-Extras | Init-Container `install-extras` (Kopie von seed-config per postRenderer) führt bei jedem Start `hermes pm install --extra google --extra stt-whisper` aus und legt `/opt/data/bin/python` an | Deklarativ statt Handarbeit im Pod; nach Volume-Verlust baut es sich selbst wieder auf. Der Wrapper gibt Skill-Skripten in der Agenten-Shell das Hermes-Python (sonst System-Python ohne Bibliotheken). |
+| Zusatzpakete für Skills | `install-extras` installiert `SKILL_PY_PACKAGES` (derzeit `pdfplumber`) per `uv pip install --target` nach `/opt/data/pylib`; der Wrapper `/opt/data/bin/python` hat den Pfad in `PYTHONPATH` | Entscheidung 2026-11-25. `hermes pm` kennt nur seine eigene Registry (`KeyError: unknown package`), `pip` fehlt im Image, und Pakete direkt in der Hermes-Umgebung überlebten keinen `pm`-Rebuild. Getrenntes Verzeichnis auf der PVC, deklarativ in Git. |
 | Websuche | `config.web.search_backend: openai-native`: OpenAIs serverseitiges `web_search`-Tool über den Codex-Transport, kein API-Key, kein neuer Egress | Entscheidung 2026-11-11. Deckt nur die Suche ab (Treffer mit Snippets); das Lesen kompletter Seiten (`web_extract`) bleibt ohne Anbieter, dafür später Firecrawl oder Tavily (ein Egress-Host, API-Key in `hermes-secrets`). |
 | GitHub | Personal Access Token (classic, Scopes `repo`, `workflow`, `read:org`) als `GITHUB_TOKEN` in `hermes-secrets`; der Init-Container `install-extras` installiert die `gh`-CLI (gepinnt, SHA256-geprüft) nach `/opt/data/bin` und schreibt `~/.git-credentials` und `~/.config/gh/hosts.yml` | Entscheidung 2026-11-11. Classic statt fine-grained, weil nur der classic Token *alle* Repos abdeckt, auf die das Konto Zugriff hat (fremde Konten, Orgs ohne Fine-grained-Freigabe). Hermes streicht `GITHUB_TOKEN` absichtlich aus jedem Subprozess, daher der Umweg über Dateien. |
 | GitLab | Zweigleisig: offizieller Remote-MCP `https://gitlab.com/api/v4/mcp` (Katalog-Eintrag, OAuth über das Dashboard) für Issues, Merge Requests, Pipelines; dazu `GITLAB_TOKEN` (PAT, nur `read_repository`/`write_repository`) in `hermes-secrets` für git über HTTPS, vom Init-Container in `~/.git-credentials` eingetragen | Entscheidung 2026-11-11. Es gibt kein gebündeltes GitLab-Skill und keine `glab`-CLI im Image; der MCP ersetzt die API-Seite, der PAT bleibt auf Repo-Inhalte beschränkt. |
@@ -1123,6 +1125,11 @@ Prüfen mit `hermes skills list` bzw. einer Testfrage („Welche Rechnungen sind
 
 API-Grenzen: keine Mahnungen, kein DATEV-Export, kein E-Mail-Versand; Rate-Limit 2 Anfragen/s.
 
+Zusatzpakete: Hermes' Belegabgleich brauchte `pdfplumber` (PDF-Text), das in der Hermes-Umgebung fehlt und sich
+dort nicht nachinstallieren lässt (`hermes pm` kennt nur seine Registry, kein `pip`). Lösung: `install-extras`
+installiert die Liste `SKILL_PY_PACKAGES` per `uv pip install --target /opt/data/pylib`, der Python-Wrapper nimmt
+das Verzeichnis in `PYTHONPATH`. Weitere Pakete: Liste im HelmRelease erweitern, Push, Rollout.
+
 Stolperstein (2026-11-25): Hermes' erster Skill-Entwurf hatte `https://api.lexware.io/v1` fest eingetragen, die
 Policy kannte nur `api.lexoffice.io` → „network error or timeout“. Seitdem sind beide Hosts frei und `base_url`
 in der Zugangsdatei zeigt auf `api.lexware.io`; das Skill soll die URL aus der Datei lesen, nicht hart kodieren.
@@ -1543,6 +1550,97 @@ Hermes markiert injizierte Erinnerungen im Chat mit 👁️ (`recall_indicator`)
   Pod ist an den Node des Volumes gebunden.
 - **Hermes: „Hindsight API … unreachable“** → Egress-Policy oder Service-Name; Test aus dem Hermes-Pod:
   `curl -s -o /dev/null -w '%{http_code}' http://hindsight-api.hindsight.svc.cluster.local:8888/health`.
+
+## 4h. GitLab Runner – CI-Jobs für gitlab.com (vorbereitet 2026-11-25)
+
+Ein **Gruppen-Runner** für `hummler-gbr` auf gitlab.com mit Kubernetes-Executor: Der Manager-Pod pollt
+gitlab.com und startet **pro CI-Job einen eigenen Pod** (bis zu 10 gleichzeitig), der nach dem Job wieder
+verschwindet.
+
+### Entscheidungen (2026-11-25)
+
+| Thema | Entscheidung | Begründung |
+| ----- | ------------ | ---------- |
+| Chart | Offizielles Chart `gitlab/gitlab-runner` `0.95.1` (Runner `19.6.1`) aus `https://charts.gitlab.io` | Der GitLab-Runner-Operator zielt auf OpenShift/OLM; auf Vanilla-Kubernetes ist das Chart der Upstream-Weg. Renovate bumpt die Version. |
+| Skalierung | **Ein** Runner, `concurrent: 10`, je Job ein Pod | Der Manager ist nie der Engpass, mehr Replicas bringen nichts. Kein HPA/KEDA, kein Node-Autoscaling (zwei feste Hetzner-Nodes). Ein zweites HelmRelease nur für ein anderes **Profil** (z.B. Image-Builds mit eigenem Tag/Ressourcen). |
+| Umfang | Gruppen-Runner `hummler-gbr` (alle Projekte der Gruppe) | Neue Projekte bekommen den Runner automatisch. Projekte außerhalb der Gruppe brauchen einen eigenen Runner (zweites HelmRelease + Token). |
+| Ressourcen | Job: Request 250m/512Mi, Limit 2 CPU/4Gi; per CI-Variable bis 4 CPU/8Gi. Helper und `services:` eigene, kleinere Werte | Requests klein, damit 10 Jobs planbar bleiben; Limits erlauben Burst. Worst Case alle 10 Jobs am Limit = 20 CPU/40Gi – deshalb die PriorityClass. |
+| Vorrang der Apps | PriorityClass `ci-low` (Wert −100, `preemptionPolicy: Never`) für Job-Pods | Wird es eng, bleiben Jobs Pending bzw. werden zuerst verdrängt, statt Apps zu blockieren. |
+| Pod Security | Namespace `gitlab-runner` mit PSS **baseline** (audit/warn restricted), `privileged = false` | CI-Images laufen meist als root – restricted würde fast jeden Job abweisen. baseline verbietet weiter privileged/hostPath/hostNetwork, also **kein Docker-in-Docker**. Image-Builds rootless, siehe unten. |
+| API-Zugriff | Manager: Role nur im Namespace (pods, attach/exec, log, secrets, events). Job-Pods: SA `gitlab-runner-job` **ohne** Token | CI-Code kommt nicht an die Kubernetes-API. |
+| Netz | default-deny; Manager → kube-apiserver 6443 + `world` 443; Jobs → `world` 443 und 80 | Jobs ziehen aus beliebigen Registries (npm, Maven, PyPI, apt teils HTTP) – eine FQDN-Allowlist würde still brechen. `world` schließt Cluster-Pods aus: Jobs erreichen keine Apps im Cluster. |
+| Cache | keiner (kein S3) | Kein MinIO auf karibik. Bei Bedarf später S3-Cache (DigitalOcean Spaces) über `runners.cache`. |
+| Tags/Optionen | in der **GitLab-UI** beim Anlegen des Runners | Bei Runner-Auth-Tokens (`glrt-`) kommen Tags, „Run untagged jobs“, „Protected“ und Timeout aus GitLab, nicht aus `config.toml`. |
+
+### Aufbau
+
+| Datei | Inhalt |
+| --- | --- |
+| [base/helm-repository/gitlab.yaml](../../infrastructure/base/helm-repository/gitlab.yaml) | HelmRepository `https://charts.gitlab.io` |
+| [base/apps/gitlab-runner/](../../infrastructure/base/apps/gitlab-runner/) | Namespace (PSS baseline), HelmRelease, SA `gitlab-runner-job`, PriorityClass `ci-low`, CiliumNetworkPolicies, default-deny |
+| [karibik/gitlab-runner/](../../infrastructure/karibik/gitlab-runner/) | Overlay + Secret `gitlab-runner-token` (SOPS, `runner-token-encrypted.yaml`, aktuell Platzhalter) |
+| [clusters/karibik/infrastructure.yaml](../../clusters/karibik/infrastructure.yaml) | Kustomization `gitlab-runner` (keine Abhängigkeiten, Healthcheck auf das HelmRelease) |
+
+### Schritt 1 – Runner in GitLab anlegen
+
+gitlab.com → Gruppe **hummler-gbr** → **Build → Runners** → **New group runner**:
+
+- **Tags**: z.B. `karibik`
+- **Run untagged jobs**: an, wenn alle Jobs der Gruppe hier laufen sollen; aus, wenn nur Jobs mit Tag `karibik`
+- Beschreibung `karibik`, **Maximum job timeout** z.B. 3600
+- **Create runner** → Token `glrt-...` kopieren (wird nur einmal angezeigt). Den `gitlab-runner register`-Befehl
+  der Seite **nicht** ausführen – das erledigt der Pod.
+
+Optional: in den Projekten unter **Settings → CI/CD → Runners** die *Instance runners* abschalten, damit Jobs
+nicht auf gitlab.com-SaaS landen und Compute-Minuten verbrauchen.
+
+### Schritt 2 – Token eintragen (vor dem Push)
+
+```powershell
+sops infrastructure/karibik/gitlab-runner/runner-token-encrypted.yaml
+```
+
+`runner-token: glrt-REPLACE_ME` durch das echte Token ersetzen, speichern (sops verschlüsselt beim Schließen).
+`runner-registration-token` bleibt leer. **Ohne echtes Token nicht pushen** – der Pod hinge sonst in einer
+Restart-Schleife und der Healthcheck der Kustomization schlüge fehl.
+
+### Schritt 3 – Rollout und prüfen
+
+Commit/Push, dann:
+
+```powershell
+flux reconcile kustomization gitlab-runner --with-source
+kubectl -n gitlab-runner get pods
+kubectl -n gitlab-runner logs deploy/gitlab-runner
+```
+
+Erwartet: im Log „Runner registered successfully“ bzw. „Checking for jobs“, in GitLab steht der Runner auf
+**online**. Test: Pipeline mit einem Job `tags: [karibik]` starten; während er läuft, zeigt
+`kubectl -n gitlab-runner get pods` einen Pod `runner-...`.
+
+### Image-Builds (falls nötig)
+
+Docker-in-Docker braucht `privileged` und ist hier gesperrt. Rootless-Alternativen ohne Änderung am Runner:
+
+- **BuildKit rootless** (`moby/buildkit:rootless` mit `buildctl-daemonless.sh`, unter baseline meist
+  `BUILDKITD_FLAGS=--oci-worker-no-process-sandbox`)
+- **Buildah** (`quay.io/buildah/stable`, `--isolation chroot`)
+- ein gepflegter **Kaniko**-Fork (das Google-Original ist archiviert)
+
+Werden Builds häufig und groß: zweites HelmRelease `gitlab-runner-build` mit eigenem Tag und höheren Limits.
+
+### Stolpersteine
+
+- **Runner in der UI gelöscht** → Pod startet mit „invalid token“ in einer Schleife: neuen Runner anlegen, Token
+  per sops tauschen.
+- **`unregisterRunners: true`** (Chart-Default): Beim Stoppen meldet sich der Manager ab; der Runner-Eintrag in
+  GitLab bleibt, nur die Runner-Manager-Zeile verschwindet. Gewollt.
+- **Jobs Pending mit „Insufficient cpu/memory“**: Requests addieren sich über alle laufenden Jobs; dann
+  `concurrent` oder die Requests senken. `ci-low`-Jobs verdrängen keine Apps.
+- **PSS-Warnungen** im Manager-Log (`would violate PodSecurity "restricted"`): nur audit/warn. Abgewiesen wird
+  erst, was gegen baseline verstößt (z.B. `privileged: true`).
+- **Jobs brauchen Cluster-Dienste** (z.B. Deploy per kubectl): bewusst nicht freigegeben. Deployments laufen über
+  Flux (GitRepository wie `pro-makler`), nicht aus der Pipeline.
 
 ## 5. Rezept: weitere App nach karibik holen (Phase 1-3)
 

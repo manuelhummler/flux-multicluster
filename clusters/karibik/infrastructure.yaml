@@ -547,3 +547,28 @@ spec:
       kind: HelmRelease
       name: renovate-gitlab
       namespace: renovate
+---
+# gitlab-runner: Gruppen-Runner fuer gitlab.com hummler-gbr (Kubernetes-Executor, bis zu 10 Jobs parallel),
+# siehe docs/clusters/gitops-karibik.md 4h. Token in infrastructure/karibik/gitlab-runner/runner-token-encrypted.yaml.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: gitlab-runner
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/karibik/gitlab-runner
+  prune: true
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: gitlab-runner
+      namespace: gitlab-runner

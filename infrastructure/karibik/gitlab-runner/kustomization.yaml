@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# GitLab Runner auf karibik, siehe docs/clusters/gitops-karibik.md, Abschnitt 4h.
+namespace: gitlab-runner
+resources:
+  - ../../base/apps/gitlab-runner
+  # Runner-Auth-Token (glrt-...), SOPS-verschluesselt. Bearbeiten:
+  #   sops infrastructure/karibik/gitlab-runner/runner-token-encrypted.yaml
+  - runner-token-encrypted.yaml

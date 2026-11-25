@@ -1,0 +1,47 @@
+# Cilium-Policies fuer GitLab Runner. Grundlage: default-deny aus base/ciliumNetworkPolicy (alles zu ausser DNS).
+# Kein Ingress: Der Runner pollt gitlab.com (ausgehend), es gibt keinen Webhook/Service.
+#
+# Runner-Manager (SA gitlab-runner): gitlab.com ueber HTTPS + kube-apiserver (legt Job-Pods an, attach/exec, Logs).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-manager
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: gitlab-runner
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+---
+# Job-Pods (SA gitlab-runner-job): Internet auf 443 und 80. Jobs klonen von gitlab.com, ziehen Pakete aus
+# beliebigen Registries (npm, Maven, PyPI, ...) und apt-Spiegel sprechen teils noch HTTP. Keine FQDN-Allowlist,
+# sie wuerde bei jeder neuen Abhaengigkeit still brechen (wie bei Renovate).
+# "world" schliesst kube-apiserver und Cluster-Pods aus: CI-Jobs erreichen keine Apps im Cluster.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-jobs
+spec:
+  endpointSelector:
+    matchLabels:
+      io.cilium.k8s.policy.serviceaccount: gitlab-runner-job
+  egress:
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP

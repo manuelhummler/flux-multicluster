@@ -1,0 +1,109 @@
+# GitLab Runner (Kubernetes-Executor) fuer gitlab.com, Gruppen-Runner fuer hummler-gbr.
+# Entscheidungen und Betrieb: docs/clusters/gitops-karibik.md, Abschnitt 4h.
+#
+# Skalierung: Ein Manager-Pod, jeder CI-Job laeuft in einem eigenen Pod (bis zu "concurrent" gleichzeitig).
+# Mehr Durchsatz = concurrent erhoehen, NICHT mehr Replicas. Ein zweites HelmRelease lohnt sich nur fuer ein
+# anderes Profil (z.B. eigene Tags/Ressourcen fuer Image-Builds).
+# Tags, "untagged Jobs annehmen", "protected" usw. werden bei Runner-Auth-Tokens (glrt-) in der GitLab-UI
+# gesetzt, nicht hier.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: gitlab-runner
+spec:
+  interval: 1h0m0s
+  chart:
+    spec:
+      chart: gitlab-runner
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: gitlab
+      version: 0.95.1
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: gitlab-runner
+
+    gitlabUrl: https://gitlab.com/
+    # Runner-Auth-Token (glrt-...) aus dem SOPS-Secret im Overlay (Keys runner-token, runner-registration-token)
+    runners:
+      secret: gitlab-runner-token
+      config: |
+        [[runners]]
+          [runners.kubernetes]
+            namespace = "{{ .Release.Namespace }}"
+            # Default-Image, wenn ein Job kein "image:" angibt
+            image = "alpine:3.22"
+            service_account = "gitlab-runner-job"
+            priority_class_name = "ci-low"
+            privileged = false
+            allow_privilege_escalation = false
+            # Zeit fuer Pod-Start inkl. Image-Pull (grosse Build-Images)
+            poll_timeout = 600
+
+            # Ressourcen pro Job: Requests klein (zaehlen fuer die Planung), Limits grosszuegig (Burst).
+            # Ein Job darf per CI-Variable mehr anfordern (KUBERNETES_CPU_LIMIT usw.), bis zu den Maxima.
+            cpu_request = "250m"
+            cpu_limit = "2"
+            memory_request = "512Mi"
+            memory_limit = "4Gi"
+            cpu_request_overwrite_max_allowed = "2"
+            cpu_limit_overwrite_max_allowed = "4"
+            memory_request_overwrite_max_allowed = "4Gi"
+            memory_limit_overwrite_max_allowed = "8Gi"
+            helper_cpu_request = "50m"
+            helper_cpu_limit = "1"
+            helper_memory_request = "64Mi"
+            helper_memory_limit = "512Mi"
+            # "services:" der Jobs (z.B. postgres fuer Tests)
+            service_cpu_request = "100m"
+            service_cpu_limit = "1"
+            service_memory_request = "256Mi"
+            service_memory_limit = "2Gi"
+
+            [runners.kubernetes.pod_labels]
+              "app.kubernetes.io/name" = "gitlab-runner-job"
+
+    # Bis zu 10 Jobs gleichzeitig (je ein Pod)
+    concurrent: 10
+    checkInterval: 3
+
+    rbac:
+      create: true
+      # Minimalrechte fuer den Kubernetes-Executor, nur im eigenen Namespace
+      # (https://docs.gitlab.com/runner/executors/kubernetes/#configure-runner-api-permissions)
+      rules:
+        - resources: ["pods"]
+          verbs: ["create", "delete", "get", "list", "watch"]
+        - resources: ["pods/attach", "pods/exec"]
+          verbs: ["create", "delete", "get", "patch"]
+        - resources: ["pods/log"]
+          verbs: ["get", "list"]
+        - resources: ["secrets"]
+          verbs: ["create", "delete", "get", "update"]
+        - resources: ["serviceaccounts"]
+          verbs: ["get"]
+        - resources: ["events"]
+          verbs: ["list", "watch"]
+    serviceAccount:
+      create: true
+      name: gitlab-runner
+
+    podSecurityContext:
+      runAsUser: 100
+      fsGroup: 65533
+      seccompProfile:
+        type: RuntimeDefault
+
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi

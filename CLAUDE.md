@@ -79,3 +79,4 @@ Key infrastructure components managed in this repo:
 - **AI**: Hermes Agent (karibik only, `hermes.hummler.com`; see `docs/clusters/gitops-karibik.md` section 4e)
 - **AI memory**: Hindsight (karibik only, `hindsight.hummler.com`, Postgres in CNPG; Hermes memory provider; see `docs/clusters/gitops-karibik.md` section 4g)
 - **Dependency updates**: self-hosted Renovate (karibik only, CronJobs for GitHub + GitLab; see `docs/clusters/gitops-karibik.md` section 4f)
+- **CI**: GitLab Runner (karibik only, group runner for gitlab.com `hummler-gbr`, Kubernetes executor, concurrent 10; see `docs/clusters/gitops-karibik.md` section 4h)
