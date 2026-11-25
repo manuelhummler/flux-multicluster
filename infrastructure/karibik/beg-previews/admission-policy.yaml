@@ -95,13 +95,10 @@ spec:
     # spec.client ist im CRD Pflichtfeld
     - name: client
       expression: object.spec.client
-    # Erlaubte Service-Account-Rollen (Nutzerverwaltung im Realm beg). Schreibweise nach Spike Task 2 festlegen -
-    # vorlaeufig beide denkbaren.
+    # Erlaubte Service-Account-Rollen: serviceAccountRoles nimmt nur Realm-Rollen (Spike A 2026-11-25); die
+    # Nutzerverwaltung steckt in der zusammengesetzten Rolle beg-preview-user-admin (Realm-Setup-Job).
     - name: allowedRoles
-      expression: >-
-        ['realm-management/manage-users', 'realm-management/view-users', 'realm-management/query-users',
-         'realm-management/query-groups', 'realm-management/view-realm',
-         'manage-users', 'view-users', 'query-users', 'query-groups', 'view-realm']
+      expression: "['beg-preview-user-admin']"
   validations:
     - expression: variables.id.matches('^(mr-[0-9]+|main)$')
       message: "unerwarteter ServiceAccount-Name"

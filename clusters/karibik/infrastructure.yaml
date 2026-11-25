@@ -663,3 +663,21 @@ spec:
     substituteFrom:
       - kind: Secret
         name: cluster-secrets
+---
+# spikes: kurzlebige Experimente per GitOps (infrastructure/karibik/spikes/kustomization.yaml). Aufraeumen durch
+# Entfernen aus der Liste + Push (prune). Aktuell: Spike A der beg-Previews (Keycloak-Client-CRs).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: spikes
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: keycloak-beg
+  path: ./infrastructure/karibik/spikes
+  prune: true

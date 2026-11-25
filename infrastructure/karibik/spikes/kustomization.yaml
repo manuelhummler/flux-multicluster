@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Kurzlebige Spikes/Experimente per GitOps (statt kubectl apply). Anlegen = Datei hier eintragen und pushen,
+# Aufraeumen = Eintrag entfernen und pushen (Flux-Kustomization "spikes" mit prune). Leere Liste ist erlaubt.
+resources:
+  - spike-clients.yaml

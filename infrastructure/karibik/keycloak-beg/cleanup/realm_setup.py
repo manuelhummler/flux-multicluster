@@ -8,6 +8,8 @@ Standard, und dieser Job ergaenzt, was die Previews brauchen – beliebig oft wi
 2. Admin-Events an: sie halten fest, welcher Client (beg-<id>-crm) einen Nutzer angelegt hat. Der Aufraeum-Job
    loescht damit die Nutzer verschwundener Previews, ohne dass die App Preview-Code braucht.
 3. Service-Account von beg-preview-cleanup bekommt realm-management/view-events (Admin-Events lesen).
+4. Realm-Rolle beg-preview-user-admin (zusammengesetzt aus realm-management manage/view/query-users, query-groups):
+   KeycloakOIDCClient.serviceAccountRoles nimmt nur Realm-Rollen (Spike A), die Preview-Clients bekommen diese.
 
 Umgebung: KEYCLOAK_URL, REALM, ADMIN_CLIENT_ID, ADMIN_CLIENT_SECRET (Service-Account im master-Realm, Secret beg-admin).
 """
@@ -51,6 +53,16 @@ def events_config_with_admin_events(cfg):
     new = dict(cfg)
     new["adminEventsEnabled"] = True
     return True, new
+
+
+PREVIEW_USER_ADMIN_ROLE = "beg-preview-user-admin"
+# KeyCloakService: createUser, getUserByName, giveGroupToUser, notHasGroup, getGroupIdByName
+PREVIEW_USER_ADMIN_COMPOSITES = ["manage-users", "view-users", "query-users", "query-groups"]
+
+
+def preview_user_admin_role_payload():
+    return {"name": PREVIEW_USER_ADMIN_ROLE, "composite": True,
+            "description": "Nutzerverwaltung fuer Preview-Clients (serviceAccountRoles der KeycloakOIDCClients)"}
 
 
 CLEANUP_CLIENT = "beg-preview-cleanup"
@@ -111,12 +123,25 @@ def main():
     cleanup_id = _request(f"{admin}/clients?clientId={CLEANUP_CLIENT}", token)[0]["id"]
     sa_user = _request(f"{admin}/clients/{cleanup_id}/service-account-user", token)["id"]
     rm_id = _request(f"{admin}/clients?clientId=realm-management", token)[0]["id"]
-    missing = missing_roles(_request(f"{admin}/clients/{rm_id}/roles", token),
-                            _request(f"{admin}/users/{sa_user}/role-mappings/clients/{rm_id}", token),
+    rm_roles = _request(f"{admin}/clients/{rm_id}/roles", token)
+    missing = missing_roles(rm_roles, _request(f"{admin}/users/{sa_user}/role-mappings/clients/{rm_id}", token),
                             CLEANUP_EXTRA_ROLES)
     if missing:
         _post_json(f"{admin}/users/{sa_user}/role-mappings/clients/{rm_id}", token, missing)
         print(f"{CLEANUP_CLIENT}: Rollen ergaenzt {[r['name'] for r in missing]}")
+
+    role_url = f"{admin}/roles/{PREVIEW_USER_ADMIN_ROLE}"
+    try:
+        _request(role_url, token)
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            raise
+        _post_json(f"{admin}/roles", token, preview_user_admin_role_payload())
+        print(f"Realm-Rolle {PREVIEW_USER_ADMIN_ROLE} angelegt")
+    missing = missing_roles(rm_roles, _request(f"{role_url}/composites", token), PREVIEW_USER_ADMIN_COMPOSITES)
+    if missing:
+        _post_json(f"{role_url}/composites", token, missing)
+        print(f"{PREVIEW_USER_ADMIN_ROLE}: Composites ergaenzt {[r['name'] for r in missing]}")
 
     changed, cfg = events_config_with_admin_events(_request(f"{admin}/events/config", token))
     if changed:

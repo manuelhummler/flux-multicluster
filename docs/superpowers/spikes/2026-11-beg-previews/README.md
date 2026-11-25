@@ -11,10 +11,11 @@ Fragen:
 3. Löscht der Operator den Client in Keycloak, wenn die CR gelöscht wird?
 4. Enthält das Token neuer Clients den Claim `roles` (Default-Scope `beg-roles` aus dem Realm-Import)?
 
-Ablauf (nach Freigabe):
+Ablauf per GitOps: Die Test-Clients liegen in `infrastructure/karibik/spikes/spike-clients.yaml` (Flux-Kustomization
+`spikes`, prune). Anlegen = Push, Aufräumen = Eintrag aus `infrastructure/karibik/spikes/kustomization.yaml` entfernen
+und pushen.
 
 ```powershell
-kubectl -n keycloak apply -f docs/superpowers/spikes/2026-11-beg-previews/spike-clients.yaml
 kubectl -n keycloak get keycloakoidcclients spike-portal spike-crm -o yaml
 ```
 
@@ -41,15 +42,18 @@ $tok = (Invoke-RestMethod -Method Post https://auth-beg.hummler.com/realms/beg/p
 Invoke-RestMethod -Method Post https://auth-beg.hummler.com/admin/realms/beg/users -Headers @{Authorization="Bearer $tok"} -ContentType 'application/json' -Body '{"username":"spike-user@e2e.invalid","enabled":true}'
 ```
 
-Aufräumen und Frage 3:
+Aufräumen und Frage 3: `- spike-clients.yaml` aus `infrastructure/karibik/spikes/kustomization.yaml` entfernen,
+pushen. Danach `spike-portal`/`spike-crm` per Admin-API nicht mehr vorhanden? Testnutzer `spike-user@e2e.invalid`
+räumt der Aufräum-Job nicht ab (Client heißt nicht `beg-<id>-crm`) – von Hand löschen.
 
-```powershell
-kubectl -n keycloak delete -f docs/superpowers/spikes/2026-11-beg-previews/spike-clients.yaml
-```
-
-Danach `spike-portal`/`spike-crm` in der Admin-Konsole nicht mehr vorhanden? Nutzer `spike-user@e2e.invalid` von Hand löschen.
-
-**Ergebnis:** _(offen)_
+**Ergebnis (2026-11-25, Teil 1):**
+1. Ja: ohne `auth` entsteht ein öffentlicher Client (`publicClient: true`, Standard-Flow). PKCE wird nicht erzwungen
+   (`pkce.code.challenge.method` leer); das Portal nutzt PKCE S256 trotzdem clientseitig. Default-Scopes inkl.
+   `beg-roles` werden geerbt.
+2. `serviceAccountRoles` nimmt **nur Realm-Rollen**: `realm-management/manage-users`, `realm-management:manage-users`
+   und `manage-users` → 400 „Cannot assign role … as it does not exist“; Realm-Rolle `portal-user` → ok.
+   Lösung: zusammengesetzte Realm-Rolle `beg-preview-user-admin` (Realm-Setup-Job).
+3. und 4.: offen (nach Push mit `beg-preview-user-admin`).
 
 ## Spike B – Rootless-Image-Build auf dem karibik-Runner (Task 3)
 

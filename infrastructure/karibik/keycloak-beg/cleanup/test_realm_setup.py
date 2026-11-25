@@ -58,5 +58,19 @@ class ServiceAccountRolesTest(unittest.TestCase):
         self.assertEqual(realm_setup.missing_roles(available, available, ["view-events"]), [])
 
 
+class PreviewUserAdminRoleTest(unittest.TestCase):
+    """KeycloakOIDCClient.serviceAccountRoles nimmt nur Realm-Rollen (Spike A 2026-11-25). Die Nutzerverwaltung der
+    Preview-Clients laeuft deshalb ueber eine zusammengesetzte Realm-Rolle mit den realm-management-Rechten."""
+
+    def test_role_payload_is_composite(self):
+        payload = realm_setup.preview_user_admin_role_payload()
+        self.assertEqual(payload["name"], "beg-preview-user-admin")
+        self.assertTrue(payload["composite"])
+
+    def test_composites_cover_what_keycloakservice_needs(self):
+        self.assertEqual(set(realm_setup.PREVIEW_USER_ADMIN_COMPOSITES),
+                         {"manage-users", "view-users", "query-users", "query-groups"})
+
+
 if __name__ == "__main__":
     unittest.main()

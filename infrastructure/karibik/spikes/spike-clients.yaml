@@ -1,4 +1,6 @@
-# Spike A (README.md): zwei Test-Clients gegen Keycloak "beg". Nur nach Freigabe anwenden, danach loeschen.
+# Spike A (docs/superpowers/spikes/2026-11-beg-previews/README.md): Test-Clients gegen Keycloak "beg".
+# Aufraeumen = Datei aus kustomization.yaml entfernen und pushen; Flux prunt die CRs, der Operator loescht die
+# Clients in Keycloak (das ist zugleich Frage 3 des Spikes).
 apiVersion: v1
 kind: Secret
 metadata:
@@ -10,6 +12,7 @@ type: Opaque
 stringData:
   client-secret: spike-only-secret-delete-after-test-0001
 ---
+# Ergebnis 2026-11-25: ohne auth -> publicClient=true, erbt Default-Scope beg-roles
 apiVersion: k8s.keycloak.org/v2alpha1
 kind: KeycloakOIDCClient
 metadata:
@@ -23,6 +26,9 @@ spec:
     redirectUris: ["https://beg-mr-0.hummler.com/*"]
     webOrigins: ["+"]
 ---
+# Ergebnis 2026-11-25: serviceAccountRoles nimmt nur Realm-Rollen ("realm-management/manage-users",
+# "realm-management:manage-users", "manage-users" -> 400 "role does not exist"; "portal-user" ok).
+# Jetzt mit der zusammengesetzten Realm-Rolle aus dem Realm-Setup-Job.
 apiVersion: k8s.keycloak.org/v2alpha1
 kind: KeycloakOIDCClient
 metadata:
@@ -40,7 +46,4 @@ spec:
         name: spike-crm-client
         key: client-secret
     serviceAccountRoles:
-      - realm-management/manage-users
-      - realm-management/view-users
-      - realm-management/query-users
-      - realm-management/query-groups
+      - beg-preview-user-admin
