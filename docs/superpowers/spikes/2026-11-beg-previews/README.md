@@ -60,7 +60,13 @@ räumt der Aufräum-Job nicht ab (Client heißt nicht `beg-<id>-crm`) – von Ha
 5. **Neu:** Der Operator legt Clients mit `fullScopeAllowed: false` an (kein CRD-Feld dafür). Tokens enthalten dann
    nur gemappte Rollen: `roles` fehlte, `realm-management` leer, Admin-API → 401. Lösung: Scope-Mappings (Realm-Rollen
    + realm-management-Rechte) am Default-Scope `beg-roles` (Realm-Setup-Job, `beg-realm-setup-4`).
-6. Token-Claims, Nutzeranlage, Admin-Event, Löschen: offen (nach Push von `beg-realm-setup-4`).
+6. Nach `beg-realm-setup-4`: Token enthält `roles: [beg-preview-user-admin]` und realm-management manage/view/query-users,
+   query-groups – Admin-API trotzdem 401, auch für den importierten `beg-e2e-admin`. **Ursache:** Keycloak 26.x
+   verlangt für die Admin-API die Audience aus Scope `kc-admin-api` (Mapper `oidc-admin-api-audience-mapper`); nur
+   das Master-Token hatte sie. Lösung: `kc-admin-api` als Realm-Default und Default-Scope aller vorhandenen
+   Service-Account-Clients (`beg-realm-setup-5`). **Achtung für Dev/Prod:** Nach einem Keycloak-Update auf diese
+   Version braucht auch der CRM-Client dort `kc-admin-api` als Default-Scope, sonst scheitert `KeyCloakService`.
+7. Nutzeranlage, Admin-Event, Löschen: offen (nach Push von `beg-realm-setup-5`).
 
 ## Spike B – Rootless-Image-Build auf dem karibik-Runner (Task 3)
 

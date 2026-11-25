@@ -86,5 +86,20 @@ class ScopeMappingsTest(unittest.TestCase):
                          set(realm_setup.PREVIEW_USER_ADMIN_COMPOSITES))
 
 
+class AdminApiScopeTest(unittest.TestCase):
+    """Keycloak 26.x verlangt fuer die Admin-API die Audience aus Scope kc-admin-api (Spike A 2026-11-25): ohne sie
+    401 trotz realm-management-Rollen. Service-Account-Clients brauchen ihn als Default-Scope."""
+
+    def test_only_service_account_clients_are_selected(self):
+        clients = [{"id": "1", "clientId": "beg-e2e-admin", "serviceAccountsEnabled": True},
+                   {"id": "2", "clientId": "spike-portal", "serviceAccountsEnabled": False},
+                   {"id": "3", "clientId": "beg-mr-7-crm", "serviceAccountsEnabled": True},
+                   {"id": "4", "clientId": "realm-management", "serviceAccountsEnabled": True}]
+        self.assertEqual(realm_setup.service_account_client_ids(clients), ["1", "3"])
+
+    def test_admin_api_scope_name(self):
+        self.assertEqual(realm_setup.ADMIN_API_SCOPE, "kc-admin-api")
+
+
 if __name__ == "__main__":
     unittest.main()

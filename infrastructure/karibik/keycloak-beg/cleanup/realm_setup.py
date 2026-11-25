@@ -13,6 +13,9 @@ Standard, und dieser Job ergaenzt, was die Previews brauchen – beliebig oft wi
 5. Scope-Mappings am Scope beg-roles: Der Operator legt Clients mit fullScopeAllowed=false an, Tokens enthalten dann
    nur gemappte Rollen. Ohne diese Mappings fehlen Nutzer-Rollen (Jmix-Codes, portal-user) im Claim "roles" und die
    realm-management-Rechte im Service-Account-Token.
+6. Scope kc-admin-api (Audience der Admin-API, Keycloak 26.x) als Realm-Default und bei allen vorhandenen
+   Service-Account-Clients als Default-Scope: ohne ihn lehnt die Admin-API Realm-Tokens mit 401 ab, auch mit
+   passenden Rollen. KeyCloakService der App fordert keinen Scope an, deshalb Default statt Optional.
 
 Umgebung: KEYCLOAK_URL, REALM, ADMIN_CLIENT_ID, ADMIN_CLIENT_SECRET (Service-Account im master-Realm, Secret beg-admin).
 """
@@ -72,6 +75,14 @@ def preview_user_admin_role_payload():
 SCOPE_REALM_ROLES = ["admin", "system-full-access", "system-user-access", "system-user-readonly",
                      "bpm-process-task-performer", "portal-user", PREVIEW_USER_ADMIN_ROLE]
 SCOPE_REALM_MANAGEMENT_ROLES = list(PREVIEW_USER_ADMIN_COMPOSITES)
+
+ADMIN_API_SCOPE = "kc-admin-api"
+BUILTIN_CLIENTS = {"realm-management", "broker", "account", "account-console", "admin-cli", "security-admin-console"}
+
+
+def service_account_client_ids(clients):
+    return [c["id"] for c in clients if c.get("serviceAccountsEnabled") and c.get("clientId") not in BUILTIN_CLIENTS]
+
 
 CLEANUP_CLIENT = "beg-preview-cleanup"
 CLEANUP_EXTRA_ROLES = ["view-events"]
@@ -161,6 +172,17 @@ def main():
     if missing:
         _post_json(f"{scope_url}/clients/{rm_id}", token, missing)
         print(f"{SCOPE_NAME}: realm-management-Rollen gemappt {[r['name'] for r in missing]}")
+
+    admin_scope_id = find_scope(_request(f"{admin}/client-scopes", token), ADMIN_API_SCOPE)
+    if admin_scope_id is None:
+        raise RuntimeError(f"Client-Scope {ADMIN_API_SCOPE} fehlt im Realm")
+    if find_scope(_request(f"{admin}/default-default-client-scopes", token), ADMIN_API_SCOPE) is None:
+        _put_json(f"{admin}/default-default-client-scopes/{admin_scope_id}", token, {})
+        print(f"{ADMIN_API_SCOPE} als Realm-Default-Scope gesetzt")
+    for cid in service_account_client_ids(_request(f"{admin}/clients", token)):
+        if find_scope(_request(f"{admin}/clients/{cid}/default-client-scopes", token), ADMIN_API_SCOPE) is None:
+            _put_json(f"{admin}/clients/{cid}/default-client-scopes/{admin_scope_id}", token, {})
+            print(f"{ADMIN_API_SCOPE} als Default-Scope an Client {cid} gesetzt")
 
     changed, cfg = events_config_with_admin_events(_request(f"{admin}/events/config", token))
     if changed:
