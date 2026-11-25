@@ -96,4 +96,19 @@ diesen Branch):
 Beide Builds bauen `source/` (Backend, `RUN --mount=type=cache`). `premiumRepoPass` kommt aus `/gradle-secrets` des
 Runners und wird nur für die Build-Stage an `source/gradle.properties` angehängt.
 
-**Ergebnis:** _(offen)_
+**Ergebnis (2026-11-25):**
+1. Runde 1: BuildKit rootless scheitert an `NoNewPrivs` (`newuidmap: Could not set caps`; Runner setzt
+   `allow_privilege_escalation = false`), danach wäre AppArmor (`cri-containerd`, deny mount) die nächste Hürde.
+   Buildah (`vfs`, `chroot`) scheitert an `fuse-overlayfs` für den Build-Kontext (kein `/dev/fuse`).
+   Pod-Probe: root, Default-Capabilities ohne `SYS_ADMIN`, Seccomp aus, User-Namespaces erlaubt.
+2. Runde 2: **Kaniko** (`ghcr.io/osscontainertools/kaniko:v1.29.2-debug`) baut das Backend-Image unter den
+   unveränderten Runner-Regeln – Job 18378295209 grün in 14 min (Gradle 4:41 über Reposilite inkl. Jmix premium,
+   Push ~8 min), Image `ci/spike:kaniko-d23c0ecb`. Ohne Cache-Mounts (`--mount=type=cache` aus dem Dockerfile
+   entfernt), Gradle im Image mit dem Runner-Init-Skript (`--init-script`).
+3. Unterwegs behoben: Runner-Tag `karibik` fehlte; Jmix-Zugangsdaten in Reposilite vertauscht und im Runner-Secret
+   als Zahl gespeichert (Kustomization `gitlab-runner` war seit d9614f8 nicht Ready); Reposilite cachte Misses
+   dauerhaft (`resolutionCacheMissTtl` jetzt 600 s) und liest die Shared Config nur beim Start
+   (`reposilite/config-rev` hochzählen).
+
+**Entscheidung für Task 10:** Image-Builds mit Kaniko. Offen: Push-Dauer (~8 min) – Layer-Größe prüfen.
+
