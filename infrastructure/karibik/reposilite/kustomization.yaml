@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Reposilite (Maven-Proxy fuer GitLab-CI) auf karibik, siehe docs/clusters/gitops-karibik.md, Abschnitt 4i.
+namespace: reposilite
+resources:
+  - ../../base/apps/reposilite
+  # Shared Configuration (Repositories, Mirrors, Jmix-Zugangsdaten), SOPS-verschluesselt. Bearbeiten:
+  #   sops infrastructure/karibik/reposilite/shared-config-encrypted.yaml
+  - shared-config-encrypted.yaml

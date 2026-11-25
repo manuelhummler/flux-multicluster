@@ -7,3 +7,6 @@ resources:
   # Runner-Auth-Token (glrt-...), SOPS-verschluesselt. Bearbeiten:
   #   sops infrastructure/karibik/gitlab-runner/runner-token-encrypted.yaml
   - runner-token-encrypted.yaml
+  # Jmix-Premium-Zugangsdaten fuer den Fallback ohne Reposilite (Abschnitt 4i). Bearbeiten:
+  #   sops infrastructure/karibik/gitlab-runner/jmix-credentials-encrypted.yaml
+  - jmix-credentials-encrypted.yaml

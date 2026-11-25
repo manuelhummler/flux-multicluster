@@ -8,3 +8,10 @@ resources:
   - helm-release.yaml
   - ../../helm-repository/gitlab.yaml
   - ../../ciliumNetworkPolicy
+configMapGenerator:
+  # Gradle-Init-Skript fuer die Job-Pods (gemountet nach /gradle-home/init.d, siehe helm-release.yaml)
+  - name: gradle-init
+    files:
+      - reposilite.gradle=gradle-init.gradle
+generatorOptions:
+  disableNameSuffixHash: true

@@ -1,0 +1,39 @@
+# Cilium-Policies fuer Reposilite. Grundlage: default-deny aus base/ciliumNetworkPolicy (alles zu ausser DNS).
+#
+# Ingress nur aus den GitLab-CI-Job-Pods (SA gitlab-runner-job). Das Repository ist PUBLIC (anonymes Lesen),
+# diese Policy ist die eigentliche Zugangsgrenze – auch fuer die gespiegelten Jmix-Premium-Artefakte.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-ingress-from-ci-jobs
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: reposilite
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.cilium.k8s.policy.serviceaccount: gitlab-runner-job
+            io.kubernetes.pod.namespace: gitlab-runner
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+---
+# Upstream-Repos (Maven Central, plugins.gradle.org, global.repo.jmix.io, ...) ueber HTTPS.
+# Keine FQDN-Allowlist: das Plugin-Portal leitet auf wechselnde CDN-Hosts um.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-to-internet-https
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: reposilite
+  egress:
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

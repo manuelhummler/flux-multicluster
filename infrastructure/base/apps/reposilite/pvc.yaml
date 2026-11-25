@@ -1,0 +1,14 @@
+# Eigenes PVC statt dem des Charts: fester Name fuer den Cleanup-CronJob (existingClaim im HelmRelease).
+# StorageClass longhorn-cache (1 Replik, kein Backup, aus dem Hermes-Overlay): reiner Cache, alles ist
+# jederzeit von Maven Central/Jmix neu ladbar.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: reposilite-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn-cache
+  resources:
+    requests:
+      storage: 30Gi

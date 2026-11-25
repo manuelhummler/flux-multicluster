@@ -45,3 +45,12 @@ spec:
               protocol: TCP
             - port: "80"
               protocol: TCP
+    # Einzige Ausnahme im Cluster: Maven-Proxy Reposilite (Gradle-Init-Skript, Abschnitt 4i)
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: reposilite
+            io.kubernetes.pod.namespace: reposilite
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

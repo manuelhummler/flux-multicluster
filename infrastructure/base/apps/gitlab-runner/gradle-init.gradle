@@ -1,0 +1,87 @@
+// Gradle-Init-Skript fuer alle CI-Jobs des karibik-Runners (GRADLE_USER_HOME=/gradle-home, init.d).
+// Biegt jedes Maven-Repository mit http(s)-URL auf den Reposilite-Proxy im Cluster um: Maven Central,
+// Plugin-Portal, Jmix public/premium usw. werden dort gecacht. Lokale Repos (mavenLocal, file:) bleiben.
+// Siehe docs/clusters/gitops-karibik.md, Abschnitt 4i.
+//
+// Fallback: Antwortet Reposilite beim Build-Start nicht, bleiben die Original-Repos (Maven Central, Jmix, ...)
+// unveraendert. Gradle wechselt bei einem nicht erreichbaren Repo NICHT selbst zum naechsten, deshalb die
+// Pruefung vorab. Faellt Reposilite mitten im Build aus, schlaegt der Build fehl (Retry der Pipeline genuegt).
+//
+// Jmix premium: Properties premiumRepoUser/premiumRepoPass kommen aus /gradle-secrets (Secret jmix-credentials),
+// gebraucht werden sie nur im Fallback (direkter Zugriff auf global.repo.jmix.io). Ueber Reposilite gehen sie nie
+// raus, Gradle sendet Basic-Auth erst nach einem 401.
+//
+// Steuerung pro Job (CI-Variablen): REPOSILITE_DISABLED=true -> immer direkt; REPOSILITE_REQUIRED=true -> Build
+// bricht ab, wenn Reposilite nicht erreichbar ist (statt Fallback).
+
+def proxyUrl = System.getenv('REPOSILITE_URL') ?: 'http://reposilite.reposilite.svc.cluster.local:8080/mirror'
+
+// --- Jmix-Zugangsdaten als Projekt-Properties (nur setzen, wenn das Projekt sie nicht selbst hat) ---
+def secretsDir = new File(System.getenv('GRADLE_SECRETS_DIR') ?: '/gradle-secrets')
+def jmixProps = [:]
+['premiumRepoUser', 'premiumRepoPass'].each { key ->
+    def f = new File(secretsDir, key)
+    jmixProps[key] = f.isFile() ? f.text.trim() : 'not-configured'
+}
+allprojects { p ->
+    jmixProps.each { key, value ->
+        if (!p.hasProperty(key)) {
+            p.ext.set(key, value)
+        }
+    }
+}
+
+// --- Reposilite erreichbar? ---
+def reachable = { String url ->
+    try {
+        def origin = new URI(url).resolve('/').toURL()
+        def conn = (HttpURLConnection) origin.openConnection()
+        conn.connectTimeout = 2000
+        conn.readTimeout = 3000
+        conn.requestMethod = 'GET'
+        def code = conn.responseCode
+        conn.disconnect()
+        return code < 500
+    } catch (Exception e) {
+        return false
+    }
+}
+
+if (System.getenv('REPOSILITE_DISABLED') == 'true') {
+    logger.lifecycle("[reposilite] Umleitung abgeschaltet (REPOSILITE_DISABLED=true), Original-Repos werden genutzt")
+    return
+}
+if (!reachable(proxyUrl)) {
+    if (System.getenv('REPOSILITE_REQUIRED') == 'true') {
+        throw new GradleException("[reposilite] ${proxyUrl} nicht erreichbar und REPOSILITE_REQUIRED=true")
+    }
+    logger.warn("[reposilite] WARNUNG: ${proxyUrl} nicht erreichbar – Fallback auf die Original-Repos (Internet)")
+    return
+}
+
+// --- Umleitung ---
+def redirect = { RepositoryHandler repos, String where ->
+    repos.configureEach { repo ->
+        if (repo instanceof MavenArtifactRepository) {
+            def url = repo.url
+            if (url != null && (url.scheme == 'http' || url.scheme == 'https') && url.toString() != proxyUrl) {
+                logger.info("[reposilite] ${where}: ${repo.name} ${url} -> ${proxyUrl}")
+                repo.url = proxyUrl
+                repo.allowInsecureProtocol = true
+            }
+        }
+    }
+}
+
+beforeSettings { settings ->
+    redirect(settings.pluginManagement.repositories, 'pluginManagement')
+    redirect(settings.buildscript.repositories, 'settings buildscript')
+    redirect(settings.dependencyResolutionManagement.repositories, 'dependencyResolutionManagement')
+}
+
+allprojects {
+    redirect(buildscript.repositories, "${path} buildscript")
+    redirect(repositories, path)
+}
+
+logger.lifecycle("[reposilite] Maven-Repositories werden auf ${proxyUrl} umgeleitet")

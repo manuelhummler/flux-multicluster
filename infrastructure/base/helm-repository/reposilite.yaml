@@ -1,0 +1,9 @@
+# Offizielles Reposilite-Chart (reposilite-playground/reposilite-helm). Renovate bumpt die Chart-Version.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: reposilite
+  namespace: flux-system
+spec:
+  interval: 1h0m0s
+  url: https://helm.reposilite.com/

@@ -1,0 +1,92 @@
+# Reposilite: Maven-Proxy im Cluster fuer die GitLab-CI-Jobs (Gradle).
+# Entscheidungen und Betrieb: docs/clusters/gitops-karibik.md, Abschnitt 4i.
+#
+# Ein PUBLIC-Repository "mirror" spiegelt Maven Central, das Gradle-Plugin-Portal und die Jmix-Repos (premium mit
+# Zugangsdaten). Die Konfiguration kommt deklarativ aus dem SOPS-Secret reposilite-shared-config
+# (--shared-configuration), Aenderungen in der Web-UI gelten nicht. Erreichbar nur aus den Job-Pods (Cilium).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: reposilite
+spec:
+  interval: 1h0m0s
+  chart:
+    spec:
+      chart: reposilite
+      reconcileStrategy: ChartVersion
+      sourceRef:
+        kind: HelmRepository
+        name: reposilite
+      version: 1.4.6
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    # RWO-Volume: alten Pod zuerst stoppen, sonst haengt der neue beim Mount (falls auf anderem Node)
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+
+    # Java-Start + SQLite-Migration: Chart-Default (2 s) waere knapp
+    probes:
+      readiness:
+        initialDelaySeconds: 10
+        failureThreshold: 3
+      liveness:
+        initialDelaySeconds: 60
+
+    persistence:
+      enabled: true
+      existingClaim: reposilite-data
+      path: /app/data
+
+    env:
+      - name: JAVA_OPTS
+        value: "-Xmx384M"
+      # Das Entrypoint-Skript haengt --working-directory=/app/data selbst an
+      - name: REPOSILITE_OPTS
+        value: "--shared-configuration=/app/config/configuration.shared.json"
+
+    deployment:
+      # Nicht-root: Das Entrypoint-Skript startet java dann direkt (ohne chown/runuser); fsGroup macht
+      # /app/data fuer UID 977 (User des Images) beschreibbar.
+      podSecurityContext:
+        enabled: true
+        fsGroup: 977
+        runAsNonRoot: true
+        runAsUser: 977
+        runAsGroup: 977
+        seccompProfile:
+          type: RuntimeDefault
+      containerSecurityContext:
+        enabled: true
+        runAsNonRoot: true
+        runAsUser: 977
+        runAsGroup: 977
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+      additionalVolumes:
+        - name: shared-config
+          secret:
+            secretName: reposilite-shared-config
+        # tinylog schreibt nach /var/log/reposilite (im Image root-owned)
+        - name: logs
+          emptyDir: {}
+      additionalVolumeMounts:
+        - name: shared-config
+          mountPath: /app/config
+          readOnly: true
+        - name: logs
+          mountPath: /var/log/reposilite
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 768Mi

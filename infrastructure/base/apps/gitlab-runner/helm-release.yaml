@@ -35,6 +35,13 @@ spec:
       secret: gitlab-runner-token
       config: |
         [[runners]]
+          # Gradle: festes GRADLE_USER_HOME (emptyDir) mit Init-Skript, das alle Maven-Repos auf Reposilite umbiegt
+          # (Fallback auf die Original-Repos, wenn Reposilite nicht antwortet). Jmix-Zugangsdaten fuer den Fallback
+          # liest das Init-Skript aus /gradle-secrets (Secret jmix-credentials), Abschnitt 4i.
+          environment = [
+            "GRADLE_USER_HOME=/gradle-home",
+            "REPOSILITE_URL=http://reposilite.reposilite.svc.cluster.local:8080/mirror",
+          ]
           [runners.kubernetes]
             namespace = "{{ .Release.Namespace }}"
             # Default-Image, wenn ein Job kein "image:" angibt
@@ -65,9 +72,28 @@ spec:
             service_cpu_limit = "1"
             service_memory_request = "256Mi"
             service_memory_limit = "2Gi"
+            service_cpu_limit_overwrite_max_allowed = "4"
+            service_memory_limit_overwrite_max_allowed = "8Gi"
+            service_memory_request_overwrite_max_allowed = "4Gi"
+
+            [runners.kubernetes.node_selector]
+              # Nur auf barbossa (16 CPU/64 GB). gibbs hat 8 GB und traegt Control-Plane + Apps.
+              "kubernetes.io/hostname" = "barbossa-kube"
 
             [runners.kubernetes.pod_labels]
               "app.kubernetes.io/name" = "gitlab-runner-job"
+
+            [[runners.kubernetes.volumes.empty_dir]]
+              name = "gradle-home"
+              mount_path = "/gradle-home"
+            [[runners.kubernetes.volumes.config_map]]
+              name = "gradle-init"
+              mount_path = "/gradle-home/init.d"
+              read_only = true
+            [[runners.kubernetes.volumes.secret]]
+              name = "jmix-credentials"
+              mount_path = "/gradle-secrets"
+              read_only = true
 
     # Bis zu 10 Jobs gleichzeitig (je ein Pod)
     concurrent: 10

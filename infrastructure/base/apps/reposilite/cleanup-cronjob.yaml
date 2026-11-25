@@ -1,0 +1,76 @@
+# Leert einmal im Monat den Proxy-Cache (repositories/mirror). Reposilite laeuft weiter und laedt fehlende
+# Artefakte beim naechsten Zugriff wieder vom Upstream. Datenbank und Konfiguration bleiben unberuehrt.
+#
+# Das PVC ist ReadWriteOnce: Der Job muss auf DEMSELBEN Node laufen wie der Reposilite-Pod (podAffinity),
+# dort duerfen mehrere Pods dasselbe Longhorn-Volume mounten.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: reposilite-cache-cleanup
+spec:
+  # 1. des Monats, 03:30 Uhr
+  schedule: "30 3 1 * *"
+  timeZone: Europe/Berlin
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: reposilite-cache-cleanup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: reposilite
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 977
+            runAsGroup: 977
+            fsGroup: 977
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: cleanup
+              image: busybox:1.37.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  dir=/app/data/repositories/mirror
+                  if [ -d "$dir" ]; then
+                    echo "Vorher: $(du -sh "$dir" | cut -f1)"
+                    find "$dir" -mindepth 1 -delete
+                    echo "Proxy-Cache geleert."
+                  else
+                    echo "$dir existiert (noch) nicht, nichts zu tun."
+                  fi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  cpu: 500m
+                  memory: 64Mi
+              volumeMounts:
+                - name: data
+                  mountPath: /app/data
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: reposilite-data

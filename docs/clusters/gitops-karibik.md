@@ -52,6 +52,7 @@ Cluster-Secrets.
 | neu | **Hermes Agent** (KI-Harness) unter `hermes.hummler.com`: keine Migration, Neuinstallation nur auf karibik (siehe 4e) | **läuft seit 2026-11-08**; offen: **Backup der PVC**, Egress erweitern, OIDC |
 | neu | **Renovate** (self-hosted) als CronJobs für GitHub `flux-multicluster` und GitLab `hummler-gbr/pro-makler`, ersetzt die Mend-App (siehe 4f) | **läuft seit 2026-11-18** (Bot `manuel-bot-user`); Mend-App am 2026-11-19 entfernt, ihre PRs/Branches/Dashboard geschlossen; offen: Onboarding-MR !1 in pro-makler mergen |
 | neu | **GitLab Runner** (Gruppen-Runner `hummler-gbr`, Kubernetes-Executor, `concurrent: 10`), siehe 4h | **vorbereitet 2026-11-25**; offen: Runner in GitLab anlegen, Token per sops eintragen, Push |
+| neu | **Reposilite** (Maven-Proxy inkl. Jmix premium für die CI, Gradle-Init-Skript im Runner, monatlicher Cache-Cleanup), siehe 4i | **vorbereitet 2026-11-25**; offen: Jmix-Zugangsdaten per sops eintragen, Push, Gradle-Build testen |
 | 4 | captain-kube leerräumen & als 3. Node rejoinen; **danach** Control-Plane auf private IPs (siehe 4d) | offen |
 
 ---
@@ -1564,7 +1565,8 @@ verschwindet.
 | Chart | Offizielles Chart `gitlab/gitlab-runner` `0.95.1` (Runner `19.6.1`) aus `https://charts.gitlab.io` | Der GitLab-Runner-Operator zielt auf OpenShift/OLM; auf Vanilla-Kubernetes ist das Chart der Upstream-Weg. Renovate bumpt die Version. |
 | Skalierung | **Ein** Runner, `concurrent: 10`, je Job ein Pod | Der Manager ist nie der Engpass, mehr Replicas bringen nichts. Kein HPA/KEDA, kein Node-Autoscaling (zwei feste Hetzner-Nodes). Ein zweites HelmRelease nur für ein anderes **Profil** (z.B. Image-Builds mit eigenem Tag/Ressourcen). |
 | Umfang | Gruppen-Runner `hummler-gbr` (alle Projekte der Gruppe) | Neue Projekte bekommen den Runner automatisch. Projekte außerhalb der Gruppe brauchen einen eigenen Runner (zweites HelmRelease + Token). |
-| Ressourcen | Job: Request 250m/512Mi, Limit 2 CPU/4Gi; per CI-Variable bis 4 CPU/8Gi. Helper und `services:` eigene, kleinere Werte | Requests klein, damit 10 Jobs planbar bleiben; Limits erlauben Burst. Worst Case alle 10 Jobs am Limit = 20 CPU/40Gi – deshalb die PriorityClass. |
+| Ressourcen | Job: Request 250m/512Mi, Limit 2 CPU/4Gi; per CI-Variable bis 4 CPU/8Gi (`KUBERNETES_MEMORY_LIMIT` usw.). `services:` 2Gi, per `KUBERNETES_SERVICE_MEMORY_LIMIT` bis 8Gi. Helper klein | Requests klein, damit 10 Jobs planbar bleiben; Limits erlauben Burst. Worst Case alle 10 Jobs am Limit = 20 CPU/40Gi – deshalb die PriorityClass. |
+| Node | Job-Pods per `node_selector` nur auf **barbossa** (16 CPU/64 GB; Stand 2026-11-25 ~51 GB frei) | gibbs hat nur 8 GB und trägt Control-Plane + Apps. Nachteil: fällt barbossa aus, läuft keine CI (bewusst in Kauf genommen). |
 | Vorrang der Apps | PriorityClass `ci-low` (Wert −100, `preemptionPolicy: Never`) für Job-Pods | Wird es eng, bleiben Jobs Pending bzw. werden zuerst verdrängt, statt Apps zu blockieren. |
 | Pod Security | Namespace `gitlab-runner` mit PSS **baseline** (audit/warn restricted), `privileged = false` | CI-Images laufen meist als root – restricted würde fast jeden Job abweisen. baseline verbietet weiter privileged/hostPath/hostNetwork, also **kein Docker-in-Docker**. Image-Builds rootless, siehe unten. |
 | API-Zugriff | Manager: Role nur im Namespace (pods, attach/exec, log, secrets, events). Job-Pods: SA `gitlab-runner-job` **ohne** Token | CI-Code kommt nicht an die Kubernetes-API. |
@@ -1640,7 +1642,110 @@ Werden Builds häufig und groß: zweites HelmRelease `gitlab-runner-build` mit e
 - **PSS-Warnungen** im Manager-Log (`would violate PodSecurity "restricted"`): nur audit/warn. Abgewiesen wird
   erst, was gegen baseline verstößt (z.B. `privileged: true`).
 - **Jobs brauchen Cluster-Dienste** (z.B. Deploy per kubectl): bewusst nicht freigegeben. Deployments laufen über
-  Flux (GitRepository wie `pro-makler`), nicht aus der Pipeline.
+  Flux (GitRepository wie `pro-makler`), nicht aus der Pipeline. Einzige Ausnahme: Reposilite (4i).
+- **`resource_group` in bestehenden Pipelines** (z.B. `heavy-tests` in pro-makler): stammt aus der Zeit eines
+  gemeinsamen Runners mit wenig RAM. Auf karibik hat jeder Job sein eigenes Memory-Limit; die Sperre kann für
+  Jobs mit `tags: [karibik]` entfallen oder auf eine Gruppe pro Pipeline (`heavy-tests-$CI_PIPELINE_ID`)
+  verkleinert werden. Echte Grenze ist dann die Summe der Requests auf barbossa.
+
+## 4i. Reposilite – Maven-Proxy und Gradle-Cache für die CI (vorbereitet 2026-11-25)
+
+Ziel: Gradle-Abhängigkeiten (inkl. **Jmix premium**) einmal im Cluster cachen, statt in jedem Job aus dem Internet
+zu laden. Ist Reposilite nicht erreichbar, bauen die Jobs direkt gegen die offiziellen Repos weiter. Einmal im
+Monat soll der Cache geleert werden (CronJob vorbereitet, aktuell auskommentiert).
+
+### Entscheidungen (2026-11-25)
+
+| Thema | Entscheidung | Begründung |
+| ----- | ------------ | ---------- |
+| Ansatz | **Maven-Proxy** statt gemeinsamem Gradle-User-Home | Ein beschreibbarer Gradle-Cache für parallele Container wird von Gradle nicht unterstützt (Lock-Kommunikation zwischen Prozessen geht über Pod-Grenzen nicht), es drohen Lock-Timeouts/kaputter Cache. Read-only-Cache (`GRADLE_RO_DEP_CACHE`) bräuchte einen Seed-Job mit Projektwissen. Harbor kann kein Maven. |
+| Produkt | **Reposilite** `3.6.7`, Chart `reposilite/reposilite` `1.4.6` (`https://helm.reposilite.com/`) | Schlank (ein Container, <1 GB RAM), Mirrors mit Basic-Auth. Nexus CE wäre schwerer und hat Nutzungsgrenzen. |
+| Repository | ein Repo `mirror`, `PUBLIC`, `store: true`, Mirrors: Maven Central → Gradle-Plugin-Portal → Jmix public → Jmix premium (mit Zugangsdaten) | Ein einziger URL für das Init-Skript. `PUBLIC` = anonymes Lesen inkl. Upstream-Fetch (im Code geprüft: `RepositoryAccessResolver`, `MirrorService`); Zugangsgrenze ist die Cilium-Policy. |
+| Konfiguration | deklarativ per `--shared-configuration` aus SOPS-Secret `reposilite-shared-config` | GitOps statt Klick-Konfiguration in der DB; enthält die Jmix-Zugangsdaten. Änderungen in der Web-UI greifen nicht (Datei read-only gemountet). Kein Admin-Token, kein Ingress. |
+| Fallback | Init-Skript prüft beim Build-Start Reposilite (2 s Connect/3 s Read); antwortet es nicht, bleiben die **Original-Repos** (Maven Central, Plugin-Portal, Jmix) unverändert – Warnung im Job-Log | Gradle springt bei einem *nicht erreichbaren* Repo nicht zum nächsten, sondern bricht ab (nur bei 404 sucht es weiter). Offizielle Repos einfach hinten anzuhängen wäre also kein Fallback. Fällt Reposilite mitten im Build aus, scheitert der Build → Retry. `REPOSILITE_REQUIRED=true` erzwingt den Proxy, `REPOSILITE_DISABLED=true` schaltet ihn ab. |
+| Zugangsdaten in den Jobs | Secret `jmix-credentials` (SOPS, Overlay `karibik/gitlab-runner`) als Dateien nach `/gradle-secrets`; das Init-Skript setzt daraus `premiumRepoUser`/`premiumRepoPass`, falls das Projekt sie nicht selbst hat | Nur für den Fallback nötig (direkter Zugriff auf `global.repo.jmix.io`). Über Reposilite gehen sie nicht raus: Gradle sendet Basic-Auth erst nach einem 401. Preis: jeder Job der Gruppe kann sie lesen. Dieselben Werte stehen in der Reposilite-Konfiguration – beim Wechsel **beide** Dateien ändern. |
+| Umleitung | Gradle-Init-Skript `init.d/reposilite.gradle` (ConfigMap `gradle-init`) in `GRADLE_USER_HOME=/gradle-home` (emptyDir) | Biegt jede http(s)-Maven-URL (Settings-, Plugin-, Buildscript-, Projekt-Repos) auf Reposilite um – **ohne Änderung an den Projekten**. Abschalten pro Job: `REPOSILITE_DISABLED=true`. |
+| Speicher | eigenes PVC `reposilite-data` 30Gi, StorageClass `longhorn-cache` (1 Replik, kein Backup) | Reiner Cache, jederzeit neu ladbar. Dependency auf die Kustomization `hermes` (StorageClass). |
+| Monatlich leeren | CronJob `reposilite-cache-cleanup`, 1. des Monats 03:30, löscht `/app/data/repositories/mirror/*` – **aktuell nicht aktiv** (in `base/apps/reposilite/kustomization.yaml` auskommentiert, Stand 2026-11-25); aktivieren = Zeile `cleanup-cronjob.yaml` wieder in `resources` | Reposilite selbst hat keine Ablauf-Regel für gecachte Artefakte. RWO-Volume → Job per `podAffinity` auf den Node des Reposilite-Pods. DB/Konfiguration bleiben. |
+| Pod Security | Namespace `reposilite` PSS **restricted**, UID/GID 977 | Als Nicht-root startet das Entrypoint-Skript java direkt (kein chown/runuser); `fsGroup` macht das PVC beschreibbar, Logs in emptyDir. |
+| Netz | Ingress 8080 nur von SA `gitlab-runner-job`; Egress `world` 443 | Jobs dürfen sonst keine Cluster-Dienste erreichen; Reposilite nur Upstreams über HTTPS. |
+
+### Aufbau
+
+| Datei | Inhalt |
+| --- | --- |
+| [base/helm-repository/reposilite.yaml](../../infrastructure/base/helm-repository/reposilite.yaml) | HelmRepository |
+| [base/apps/reposilite/](../../infrastructure/base/apps/reposilite/) | Namespace, PVC, HelmRelease, Cleanup-CronJob, CiliumNetworkPolicies, default-deny |
+| [karibik/reposilite/](../../infrastructure/karibik/reposilite/) | Overlay + `shared-config-encrypted.yaml` (Repos, Mirrors, Jmix-Zugangsdaten, aktuell Platzhalter) |
+| [karibik/gitlab-runner/jmix-credentials-encrypted.yaml](../../infrastructure/karibik/gitlab-runner/jmix-credentials-encrypted.yaml) | Jmix-Zugangsdaten für den Fallback (Platzhalter), in die Job-Pods nach `/gradle-secrets` |
+| [base/apps/gitlab-runner/gradle-init.gradle](../../infrastructure/base/apps/gitlab-runner/gradle-init.gradle) | Init-Skript (ConfigMap `gradle-init`), im Runner-HelmRelease als Volume + `environment` eingebunden |
+| [clusters/karibik/infrastructure.yaml](../../clusters/karibik/infrastructure.yaml) | Kustomization `reposilite` (dependsOn longhorn, hermes) |
+
+### Schritt 1 – Jmix-Zugangsdaten eintragen (vor dem Push)
+
+```powershell
+sops infrastructure/karibik/reposilite/shared-config-encrypted.yaml
+```
+
+`REPLACE_ME_PREMIUM_REPO_USER` / `REPLACE_ME_PREMIUM_REPO_PASS` durch `premiumRepoUser` / `premiumRepoPass` aus
+dem Jmix-Account ersetzen (dieselben Werte wie in der lokalen `~/.gradle/gradle.properties`). Das JSON muss
+gültig bleiben. Dieselben Werte für den Fallback:
+
+```powershell
+sops infrastructure/karibik/gitlab-runner/jmix-credentials-encrypted.yaml
+```
+
+### Schritt 2 – Rollout und prüfen
+
+Push (zusammen mit dem Runner aus 4h), dann:
+
+```powershell
+kubectl -n reposilite get pods,pvc
+kubectl -n reposilite logs deploy/reposilite
+```
+
+Vom Runner aus testen: Pipeline-Job mit `tags: [karibik]`, z.B.
+
+```yaml
+reposilite-check:
+  image: curlimages/curl:8.11.1
+  tags: [karibik]
+  script:
+    - curl -fsS -o /dev/null -w '%{http_code}\n' http://reposilite.reposilite.svc.cluster.local:8080/mirror/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0.pom
+```
+
+Erwartet `200`. Danach einen Gradle-Build laufen lassen: Im Log steht
+`[reposilite] Maven-Repositories werden auf … umgeleitet`, Jmix-premium-Abhängigkeiten werden aufgelöst.
+Fallback testen: Job mit Variable `REPOSILITE_URL=http://reposilite.invalid:8080/mirror` → Log zeigt
+`WARNUNG: … nicht erreichbar – Fallback`, der Build lädt direkt aus dem Internet (Jmix premium mit den Daten aus
+`jmix-credentials`). Füllstand: `kubectl -n reposilite exec deploy/reposilite -- du -sh /app/data/repositories/mirror`.
+
+Cleanup testweise auslösen:
+
+```powershell
+kubectl -n reposilite create job --from=cronjob/reposilite-cache-cleanup cleanup-test
+kubectl -n reposilite logs job/cleanup-test
+```
+
+### Hinweise für die Projekte
+
+- **`GRADLE_USER_HOME` nicht selbst setzen** (häufig `$CI_PROJECT_DIR/.gradle` für den GitLab-Cache). Sonst findet
+  Gradle das Init-Skript nicht und lädt wieder direkt aus dem Internet. Der GitLab-`cache:` für `.gradle` ist mit
+  Reposilite überflüssig.
+- Der Gradle-Wrapper lädt die **Distribution** weiterhin pro Job von `services.gradle.org` (kein Maven-Artefakt).
+- Neue Upstream-Repos (z.B. Vaadin-Prereleases) brauchen einen weiteren `proxied`-Eintrag – sonst liefert der
+  Proxy 404, weil das Init-Skript auch diese URL umbiegt.
+- Init-Skript braucht Gradle ≥ 6.8 (`dependencyResolutionManagement`).
+
+### Stolpersteine
+
+- **Reposilite startet nicht / Konfiguration ignoriert**: JSON im Secret ungültig → `sops -d … | jq` prüfen.
+  Schlüssel stammen aus `MavenSettings.kt` (Reposilite 3.6), nicht aus der Doku.
+- **401 von Jmix premium im Reposilite-Log**: Zugangsdaten falsch oder Abo abgelaufen.
+- **Artefakt-Typ fehlt** (404 trotz Upstream): `allowedExtensions` je Mirror erweitern (aktuell Default + `.zip`,
+  `.klib`).
+- **Cleanup-Job Pending**: podAffinity findet keinen laufenden Reposilite-Pod (z.B. während eines Rollouts).
+- **Rollout hängt**: RWO-Volume; deshalb `maxSurge: 0` (alter Pod geht zuerst).
 
 ## 5. Rezept: weitere App nach karibik holen (Phase 1-3)
 

@@ -1,0 +1,28 @@
+# Reposilite Shared Configuration (--shared-configuration), Domain "maven".
+# Ein Repository "mirror" (PUBLIC = anonymes Lesen; Zugang regelt die Cilium-Policy), das nacheinander
+# Maven Central, Gradle-Plugin-Portal, Jmix public und Jmix premium spiegelt und alles speichert (store: true).
+# Jmix-Zugangsdaten: premiumRepoUser/premiumRepoPass aus dem Jmix-Account (Lizenzschluessel).
+# Weiteres Upstream-Repo = weiterer Eintrag in "proxied" (Reihenfolge = Suchreihenfolge).
+apiVersion: v1
+kind: Secret
+metadata:
+    name: reposilite-shared-config
+    namespace: reposilite
+type: Opaque
+stringData:
+    configuration.shared.json: ENC[AES256_GCM,data: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,iv:42GalNxKvXvANw1knPqnohgFEj+91Ql5u0REiua26ko=,tag:7/jNaYq8mgMN0+O34OYktQ==,type:str]
+sops:
+    age:
+        - recipient: age1ffsgx4kzutechq3p20sxxc8x4p2zg8xvwmzj6dhercecec543dtsdq27ka
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA3WGIvRkgwM0hZS1lTNWRY
+            RWhmRzg5d0ZkT2ZuSktMQU9EWncwS0YzZzBNCnU3NFBFUjl5S3g3UkhTNmRsYjRs
+            cmFlMlluRFRGNnVsZHAyRjMrTE9FR3MKLS0tIE0vM0lBMGliSXBOWlZGQmVqc3Nv
+            MHJGaEF5emdzejBreXEzZzh1SW5TbWMKioTUI25uXJXEN3snVBQP0cOTpNNb/cZw
+            JIRtMZyOVhBZ7uSNHwAOACq+BqBJS6ebIbq2xAkFJ7nm/gmQczZbMA==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2026-11-25T18:09:31Z"
+    mac: ENC[AES256_GCM,data:HKm4pU6jB0jQ/qnW3BqKOZWmmFMbzs4xc8g5TysoSCf0kBnVRx9d8McbacOgUwHyCyc+KlfjIeXRIARA6ag6+BDQyu2Hud+vEG2S3RNq66VqHAObFi+/zGHSTcvMsBNC5h7WsOqSaSemaQsL4CfR0E80AxXfBXQljX075JIhXw4=,iv:zFnsZI7kh5n/j4C10BpfTCSLtGpFoezX3B5wSYXfppk=,tag:SfoQlhiRr+ZkNpR8fyUZAA==,type:str]
+    encrypted_regex: ^(data|stringData)$
+    version: 3.12.1
