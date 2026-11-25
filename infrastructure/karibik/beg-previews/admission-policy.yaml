@@ -106,6 +106,9 @@ spec:
       message: "Preview-Clients nur fuer die Keycloak-Instanz beg"
     - expression: object.spec.realm == 'beg'
       message: "Preview-Clients nur im Realm beg"
+    # Ohne enabled legt der Operator den Client deaktiviert an (Spike A 2026-11-25) – sonst stilles invalid_client
+    - expression: has(variables.client.enabled) && variables.client.enabled == true
+      message: "Preview-Clients brauchen client.enabled: true (Operator-Default ist deaktiviert)"
     - expression: object.metadata.name in ['beg-' + variables.id + '-crm', 'beg-' + variables.id + '-portal']
       message: "Nur die Clients der eigenen Preview: beg-<id>-crm / beg-<id>-portal"
     - expression: >-

@@ -53,7 +53,11 @@ räumt der Aufräum-Job nicht ab (Client heißt nicht `beg-<id>-crm`) – von Ha
 2. `serviceAccountRoles` nimmt **nur Realm-Rollen**: `realm-management/manage-users`, `realm-management:manage-users`
    und `manage-users` → 400 „Cannot assign role … as it does not exist“; Realm-Rolle `portal-user` → ok.
    Lösung: zusammengesetzte Realm-Rolle `beg-preview-user-admin` (Realm-Setup-Job).
-3. und 4.: offen (nach Push mit `beg-preview-user-admin`).
+3. Realm-Rolle `beg-preview-user-admin` am Service-Account: ok (`HasErrors=False`).
+4. **Neu:** Der Operator legt Clients **deaktiviert** an (`enabled: false`), wenn `client.enabled` fehlt – Token
+   liefert dann `invalid_client`, obwohl das Secret stimmt. Alle Client-CRs brauchen `enabled: true`; die
+   Admission-Policy erzwingt das für Preview-Clients.
+5. Token-Claims, Nutzeranlage, Admin-Event, Löschen: offen (nach Push mit `enabled: true`).
 
 ## Spike B – Rootless-Image-Build auf dem karibik-Runner (Task 3)
 

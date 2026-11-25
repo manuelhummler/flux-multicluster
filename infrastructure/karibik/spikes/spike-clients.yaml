@@ -22,6 +22,8 @@ spec:
   keycloakCRName: beg
   realm: beg
   client:
+    # Spike A: ohne enabled legt der Operator den Client DEAKTIVIERT an (invalid_client beim Token)
+    enabled: true
     loginFlows: [STANDARD]
     redirectUris: ["https://beg-mr-0.hummler.com/*"]
     webOrigins: ["+"]
@@ -38,6 +40,8 @@ spec:
   keycloakCRName: beg
   realm: beg
   client:
+    # Spike A: ohne enabled legt der Operator den Client DEAKTIVIERT an (invalid_client beim Token)
+    enabled: true
     loginFlows: [STANDARD, SERVICE_ACCOUNT]
     redirectUris: ["https://beg-mr-0.hummler.com/*"]
     auth:
