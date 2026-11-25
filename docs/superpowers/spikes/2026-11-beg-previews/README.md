@@ -84,7 +84,7 @@ räumt der Aufräum-Job nicht ab (Client heißt nicht `beg-<id>-crm`) – von Ha
 Frage: Baut BuildKit rootless oder Buildah das Backend-Image (`source/Dockerfile`, nutzt `RUN --mount=type=cache`)
 unter den Runner-Regeln (kein privileged, Namespace PSS baseline)?
 
-Ablauf: Branch `spike/rootless-build` in beg-verwaltung (Worktree `D:/Workspace/beg-project/beg-verwaltung-spike`,
+Ablauf: Branch `spike/rootless-build` in beg-verwaltung (im Checkout `D:/Workspace/beg-project/beg-verwaltung`,
 von `origin/main`), dessen `.gitlab-ci.yml` nur drei Spike-Jobs enthält (kein MR nötig, `workflow:rules` nur für
 diesen Branch):
 
