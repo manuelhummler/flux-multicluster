@@ -3,9 +3,11 @@
 #
 # 1. ResourceSet-SA darf nur Namespaces beg-mr-<n>/beg-main anlegen/aendern/loeschen
 # 2. ResourceSet-SA darf in keycloak nur Secrets beg-<id>-crm-client schreiben
-# 3. Manifeste aus MR-Branches (SA beg-preview-keycloak) duerfen nur Clients fuer Instanz/Realm beg mit
-#    Preview-Redirects und erlaubten Service-Account-Rollen anlegen
+# 3. Manifeste aus MR-Branches (SA beg-<id>-keycloak) duerfen nur die Clients IHRER Preview (beg-<id>-crm/-portal)
+#    fuer Instanz/Realm beg mit Redirects auf den eigenen Host und erlaubten Service-Account-Rollen anlegen
 # 4. Manifeste aus MR-Branches (SA beg-<id>-app) duerfen Ingresses nur fuer den eigenen Host anlegen
+# 5. ResourceSet-SA darf RoleBindings nur in Preview-Namespaces bzw. keycloak, nur auf die vorgesehenen Rollen und
+#    nur fuer die vorgesehenen ServiceAccounts anlegen (sonst koennte es sich selbst Secret-Rechte geben)
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -79,33 +81,44 @@ spec:
         resources: ["keycloakoidcclients"]
   matchConditions:
     - name: preview-keycloak-sa
-      expression: request.userInfo.username == 'system:serviceaccount:beg-previews:beg-preview-keycloak'
+      expression: >-
+        request.userInfo.username.startsWith('system:serviceaccount:beg-previews:beg-') &&
+        request.userInfo.username.endsWith('-keycloak')
   variables:
+    # system:serviceaccount:beg-previews:beg-<id>-keycloak -> <id>
+    - name: sa
+      expression: request.userInfo.username.split(':')[3]
+    - name: id
+      expression: variables.sa.substring(4, size(variables.sa) - 9)
+    - name: host
+      expression: "'https://beg-' + variables.id + '.hummler.com'"
     # spec.client ist im CRD Pflichtfeld
     - name: client
       expression: object.spec.client
-    # Erlaubte Service-Account-Rollen (Nutzerverwaltung im Realm beg). Format aus dem Spike Task 2 – vorlaeufig
-    # beide denkbaren Schreibweisen.
+    # Erlaubte Service-Account-Rollen (Nutzerverwaltung im Realm beg). Schreibweise nach Spike Task 2 festlegen -
+    # vorlaeufig beide denkbaren.
     - name: allowedRoles
       expression: >-
         ['realm-management/manage-users', 'realm-management/view-users', 'realm-management/query-users',
          'realm-management/query-groups', 'realm-management/view-realm',
          'manage-users', 'view-users', 'query-users', 'query-groups', 'view-realm']
   validations:
+    - expression: variables.id.matches('^(mr-[0-9]+|main)$')
+      message: "unerwarteter ServiceAccount-Name"
     - expression: object.spec.keycloakCRName == 'beg'
       message: "Preview-Clients nur fuer die Keycloak-Instanz beg"
     - expression: object.spec.realm == 'beg'
       message: "Preview-Clients nur im Realm beg"
-    - expression: object.metadata.name.matches('^beg-(mr-[0-9]+|main)-(crm|portal)$')
-      message: "Client-Name muss beg-<id>-crm oder beg-<id>-portal sein"
+    - expression: object.metadata.name in ['beg-' + variables.id + '-crm', 'beg-' + variables.id + '-portal']
+      message: "Nur die Clients der eigenen Preview: beg-<id>-crm / beg-<id>-portal"
     - expression: >-
         !has(variables.client.redirectUris) ||
-        variables.client.redirectUris.all(u, u.matches('^https://beg-(mr-[0-9]+|main)\\.hummler\\.com/'))
-      message: "Redirect-URIs nur auf https://beg-<id>.hummler.com/"
+        variables.client.redirectUris.all(u, u.startsWith(variables.host + '/'))
+      message: "Redirect-URIs nur auf den eigenen Preview-Host"
     - expression: >-
         !has(variables.client.webOrigins) ||
-        variables.client.webOrigins.all(o, o == '+' || o.matches('^https://beg-(mr-[0-9]+|main)\\.hummler\\.com$'))
-      message: "Web-Origins nur '+' oder https://beg-<id>.hummler.com"
+        variables.client.webOrigins.all(o, o == '+' || o == variables.host)
+      message: "Web-Origins nur '+' oder der eigene Preview-Host"
     - expression: >-
         !has(variables.client.serviceAccountRoles) ||
         variables.client.serviceAccountRoles.all(r, r in variables.allowedRoles)
@@ -141,9 +154,14 @@ spec:
         request.userInfo.username.startsWith('system:serviceaccount:beg-previews:beg-') &&
         request.userInfo.username.endsWith('-app')
   validations:
+    # Ohne Rules griffe ein defaultBackend fuer beliebige Hosts - fuer Previews nicht erlaubt
+    - expression: "!has(object.spec.defaultBackend)"
+      message: "Preview-Ingress ohne defaultBackend"
     - expression: >-
-        object.spec.rules.all(r, has(r.host) && r.host == request.namespace + '.hummler.com') &&
-        (!has(object.spec.tls) || object.spec.tls.all(t, t.hosts.all(h, h == request.namespace + '.hummler.com')))
+        (!has(object.spec.rules) ||
+         object.spec.rules.all(r, has(r.host) && r.host == request.namespace + '.hummler.com')) &&
+        (!has(object.spec.tls) ||
+         object.spec.tls.all(t, !has(t.hosts) || t.hosts.all(h, h == request.namespace + '.hummler.com')))
       message: "Preview-Ingress nur fuer den eigenen Host <namespace>.hummler.com"
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -152,4 +170,48 @@ metadata:
   name: beg-preview-ingress-hosts
 spec:
   policyName: beg-preview-ingress-hosts
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: beg-preview-rolebindings
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["rolebindings"]
+  matchConditions:
+    - name: resourceset-sa
+      expression: request.userInfo.username == 'system:serviceaccount:beg-previews:beg-previews'
+  variables:
+    - name: rb
+      expression: "request.operation == 'DELETE' ? oldObject : object"
+    - name: ns
+      expression: request.namespace
+  validations:
+    - expression: >-
+        (variables.ns.matches('^beg-(mr-[0-9]+|main)$') &&
+         variables.rb.roleRef.kind == 'ClusterRole' &&
+         variables.rb.roleRef.name in ['beg-preview-app', 'beg-preview-platform'] &&
+         variables.rb.subjects.all(s, s.kind == 'ServiceAccount' && s.namespace == 'beg-previews' &&
+           (s.name == 'beg-previews' || s.name == variables.ns + '-app')))
+        ||
+        (variables.ns == 'keycloak' &&
+         variables.rb.metadata.name.matches('^beg-(mr-[0-9]+|main)-keycloak$') &&
+         variables.rb.roleRef.kind == 'Role' &&
+         variables.rb.roleRef.name == 'beg-preview-keycloak' &&
+         variables.rb.subjects.all(s, s.kind == 'ServiceAccount' && s.namespace == 'beg-previews' &&
+           s.name == variables.rb.metadata.name))
+      message: "beg-previews darf RoleBindings nur fuer Preview-Namespaces/keycloak mit den vorgesehenen Rollen und SAs anlegen"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: beg-preview-rolebindings
+spec:
+  policyName: beg-preview-rolebindings
   validationActions: [Deny]

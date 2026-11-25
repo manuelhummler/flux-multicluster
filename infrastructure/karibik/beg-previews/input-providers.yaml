@@ -1,6 +1,8 @@
 # Quellen der Previews (Doku 4j):
 # - beg-merge-requests: alle offenen MRs von einfach-genossenschaft/beg-verwaltung, hoechstens 8 gleichzeitig,
-#   Opt-out per Label "preview::off". Exportiert pro MR id (MR-Nummer), sha, branch, author, title.
+#   Exportiert pro MR id (MR-Nummer), sha, branch, author, title.
+#   Abbau ohne Merge: "[no-preview]" in den MR-Titel (resourceset.yaml). Label "preview::pause" friert eine Preview
+#   ein (skip.labels pausiert nur die Aktualisierung des Inputs, entfernt ihn nicht).
 # - beg-main: der Branch main -> dauerhafte Preview beg-main (Ziel von test_e2e nach dem Merge).
 # defaultValues.kind unterscheidet beide im ResourceSet (resourceset.yaml).
 # Takt: alle 2 Minuten (kein Webhook-Receiver; bei Bedarf Flux-Receiver type gitlab ergaenzen).
@@ -20,7 +22,7 @@ spec:
     limit: 8
   skip:
     labels:
-      - "preview::off"
+      - "preview::pause"
   defaultValues:
     kind: mr
 ---

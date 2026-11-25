@@ -1,12 +1,14 @@
 # Preview-Umgebungen von beg-verwaltung (Doku 4j, Design docs/superpowers/specs/2026-11-25-beg-mr-previews-design.md).
 # Pro Input (offener MR bzw. main) entsteht eine Preview mit ID mr-<iid> bzw. main:
 #   Namespace beg-<id>, Host beg-<id>.hummler.com, Clients beg-<id>-crm / beg-<id>-portal in Keycloak "beg".
-# Verschwindet ein MR aus den Inputs (merged/closed/Label preview::off), raeumt der Operator alles ab:
-# erst die Kustomizations (die prunen Deployments und KeycloakOIDCClients -> Operator loescht den Client in
-# Keycloak), dann Namespace, Secrets, RBAC.
+# Abbau: MR gemerged/geschlossen ODER "[no-preview]" im MR-Titel -> der Input rendert nichts mehr, der Operator
+# raeumt ab: erst die Kustomizations (die prunen Deployments und KeycloakOIDCClients -> Operator loescht den Client
+# in Keycloak), dann Namespace, Secrets, RBAC. Label "preview::pause" friert eine Preview nur ein (skip.labels).
 #
 # Templates: << >> (Flux Operator). ${PREVIEW_CLIENT_SECRET_SEED} ersetzt Flux beim postBuild (cluster-secrets):
 # client-secret = sha256("<seed>/<id>") – stabil solange der MR offen ist, eindeutig pro Preview, nicht im Git.
+#
+# Jeder Step beginnt mit demselben Kopf: Preview-ID ableiten, Opt-out pruefen.
 apiVersion: fluxcd.controlplane.io/v1
 kind: ResourceSet
 metadata:
@@ -22,12 +24,13 @@ spec:
       kind: ResourceSetInputProvider
       name: beg-main
   steps:
-    # 1. Namespace + RBAC + ServiceAccount der App-Kustomization
+    # 1. Namespace + ServiceAccounts + RBAC
     - name: namespace
       timeout: 2m
       resourcesTemplate: |
         <<- $id := "main" ->>
         <<- if eq inputs.kind "mr" ->><<- $id = printf "mr-%v" inputs.id ->><<- end ->>
+        <<- if not (contains "[no-preview]" (default "" inputs.title)) >>
         apiVersion: v1
         kind: Namespace
         metadata:
@@ -41,13 +44,19 @@ spec:
             pod-security.kubernetes.io/warn: restricted
             pod-security.kubernetes.io/warn-version: v1.31
           annotations:
-            beg-preview/branch: "<< inputs.branch >>"
+            beg-preview/branch: << inputs.branch | quote >>
             beg-preview/commit: "sha-<< inputs.sha >>"
         ---
         apiVersion: v1
         kind: ServiceAccount
         metadata:
           name: beg-<< $id >>-app
+          namespace: beg-previews
+        ---
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: beg-<< $id >>-keycloak
           namespace: beg-previews
         ---
         apiVersion: rbac.authorization.k8s.io/v1
@@ -67,23 +76,41 @@ spec:
         apiVersion: rbac.authorization.k8s.io/v1
         kind: RoleBinding
         metadata:
-          name: beg-preview-secrets
+          name: beg-preview-platform
           namespace: beg-<< $id >>
         roleRef:
           apiGroup: rbac.authorization.k8s.io
           kind: ClusterRole
-          name: beg-preview-secrets
+          name: beg-preview-platform
         subjects:
           - kind: ServiceAccount
             name: beg-previews
             namespace: beg-previews
-    # 2. Secrets: Client-Secret (keycloak + Preview-Namespace, gleicher abgeleiteter Wert), Registry-Pull (Kopie)
+        ---
+        # Clients dieser Preview: eigener SA, die Admission-Policy bindet Namen/Redirects an genau diese ID
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+          name: beg-<< $id >>-keycloak
+          namespace: keycloak
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: Role
+          name: beg-preview-keycloak
+        subjects:
+          - kind: ServiceAccount
+            name: beg-<< $id >>-keycloak
+            namespace: beg-previews
+        <<- end >>
+    # 2. Secrets (Client-Secret abgeleitet, Registry-Pull kopiert) + Ressourcen-Grenzen des Namespace
     - name: secrets
       timeout: 2m
       resourcesTemplate: |
         <<- $id := "main" ->>
         <<- if eq inputs.kind "mr" ->><<- $id = printf "mr-%v" inputs.id ->><<- end ->>
-        <<- $secret := printf "%s/%s" "${PREVIEW_CLIENT_SECRET_SEED}" $id | sha256sum ->>
+        <<- if not (contains "[no-preview]" (default "" inputs.title)) >>
+        <<- if lt (len "${PREVIEW_CLIENT_SECRET_SEED}") 32 >><<- fail "PREVIEW_CLIENT_SECRET_SEED fehlt oder ist kuerzer als 32 Zeichen (cluster-secrets)" >><<- end >>
+        <<- $secret := printf "%s/%s" "${PREVIEW_CLIENT_SECRET_SEED}" $id | sha256sum >>
         apiVersion: v1
         kind: Secret
         metadata:
@@ -113,12 +140,50 @@ spec:
           annotations:
             fluxcd.controlplane.io/copyFrom: "beg-previews/registry-pull"
         type: kubernetes.io/dockerconfigjson
+        ---
+        # Obergrenze einer Preview. Soll (Requests/Limits aus deployment/preview/app): ~1,2 CPU / 2,5 Gi angefordert,
+        # ~4,5 CPU / 4,7 Gi Limit; Recreate-Rollouts, also keine Doppelbelegung. Etwas Luft fuer cert-manager-Solver.
+        # Keine Services vom Typ LoadBalancer/NodePort (kostenpflichtiger Hetzner-LB bzw. offene Node-Ports).
+        apiVersion: v1
+        kind: ResourceQuota
+        metadata:
+          name: beg-preview
+          namespace: beg-<< $id >>
+        spec:
+          hard:
+            requests.cpu: "2"
+            requests.memory: 4Gi
+            limits.cpu: "6"
+            limits.memory: 6Gi
+            pods: "10"
+            services: "6"
+            services.loadbalancers: "0"
+            services.nodeports: "0"
+            persistentvolumeclaims: "0"
+        ---
+        # Container ohne Angaben (z.B. cert-manager-Solver) bekommen Defaults, sonst lehnt die Quota sie ab
+        apiVersion: v1
+        kind: LimitRange
+        metadata:
+          name: beg-preview
+          namespace: beg-<< $id >>
+        spec:
+          limits:
+            - type: Container
+              defaultRequest:
+                cpu: 10m
+                memory: 64Mi
+              default:
+                cpu: 500m
+                memory: 256Mi
+        <<- end >>
     # 3. Flux-Objekte: Quelle = MR-Commit, App + Keycloak-Clients aus deployment/preview/
     - name: flux
       timeout: 2m
       resourcesTemplate: |
         <<- $id := "main" ->>
         <<- if eq inputs.kind "mr" ->><<- $id = printf "mr-%v" inputs.id ->><<- end ->>
+        <<- if not (contains "[no-preview]" (default "" inputs.title)) >>
         apiVersion: source.toolkit.fluxcd.io/v1
         kind: GitRepository
         metadata:
@@ -130,6 +195,7 @@ spec:
           secretRef:
             name: gitlab-token
           ref:
+            branch: << inputs.branch | quote >>
             commit: "<< inputs.sha >>"
           ignore: |
             /*
@@ -155,6 +221,14 @@ spec:
           prune: true
           # Nicht auf Pods warten: das CI-Image kann noch fehlen (ImagePullBackOff loest sich selbst)
           wait: false
+          # Plattform-Vorgaben, die MR-Manifeste nicht ueberschreiben koennen (Patches laufen nach deren Build)
+          patches:
+            - target:
+                kind: Deployment
+              patch: |
+                - op: add
+                  path: /spec/template/spec/priorityClassName
+                  value: beg-preview
           postBuild:
             substitute:
               PREVIEW_ID: "<< $id >>"
@@ -175,7 +249,7 @@ spec:
             name: beg-<< $id >>
           path: ./deployment/preview/keycloak
           targetNamespace: keycloak
-          serviceAccountName: beg-preview-keycloak
+          serviceAccountName: beg-<< $id >>-keycloak
           prune: true
           wait: false
           postBuild:
@@ -183,3 +257,4 @@ spec:
               PREVIEW_ID: "<< $id >>"
               PREVIEW_SHA: "<< inputs.sha >>"
               PREVIEW_HOST: "beg-<< $id >>.hummler.com"
+        <<- end >>

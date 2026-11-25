@@ -4,8 +4,8 @@
 #    nicht aendern. Legt Namespaces beg-<id>, RoleBindings, ServiceAccounts, Secrets und die Flux-Objekte an.
 # 2. beg-<id>-app (pro Preview, Kustomization -app): wendet deployment/preview/app aus dem MR-Branch an.
 #    Nur im eigenen Namespace, nur die Arten aus ClusterRole beg-preview-app, keine RBAC-/Cluster-Objekte.
-# 3. beg-preview-keycloak (Kustomization -keycloak): wendet deployment/preview/keycloak aus dem MR-Branch an.
-#    Nur KeycloakOIDCClient im Namespace keycloak; Inhalt zusaetzlich per ValidatingAdmissionPolicy begrenzt.
+# 3. beg-<id>-keycloak (pro Preview, Kustomization -keycloak): wendet deployment/preview/keycloak aus dem MR-Branch an.
+#    Nur KeycloakOIDCClient im Namespace keycloak; die Admission-Policy bindet Namen/Redirects an die eigene ID.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -25,9 +25,14 @@ rules:
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["rolebindings"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # (Namespace, roleRef und Subjects der RoleBindings begrenzt die Policy beg-preview-rolebindings)
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterroles"]
-    resourceNames: ["beg-preview-app", "beg-preview-secrets"]
+    resourceNames: ["beg-preview-app", "beg-preview-platform"]
+    verbs: ["bind"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles"]
+    resourceNames: ["beg-preview-keycloak"]
     verbs: ["bind"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -77,7 +82,8 @@ subjects:
     name: beg-previews
     namespace: beg-previews
 ---
-# Im Namespace keycloak: nur die Client-Secrets beg-<id>-crm-client (Namen per Admission-Policy begrenzt)
+# Im Namespace keycloak: Client-Secrets beg-<id>-crm-client (Namen per Admission-Policy begrenzt). Kein list/watch:
+# das ResourceSet liest nur seine eigenen Objekte per Name.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -86,7 +92,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    verbs: ["get", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -102,14 +108,14 @@ subjects:
     name: beg-previews
     namespace: beg-previews
 ---
-# Pro Preview-Namespace an den ResourceSet-SA gebunden (RoleBinding aus dem ResourceSet): Secrets anlegen
+# Pro Preview-Namespace an den ResourceSet-SA gebunden (RoleBinding aus dem ResourceSet): Secrets, Quota, LimitRange
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: beg-preview-secrets
+  name: beg-preview-platform
 rules:
   - apiGroups: [""]
-    resources: ["secrets"]
+    resources: ["secrets", "resourcequotas", "limitranges"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 # Pro Preview-Namespace an beg-<id>-app gebunden: genau die Arten aus deployment/preview/app
@@ -131,12 +137,7 @@ rules:
     resources: ["ciliumnetworkpolicies"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: beg-preview-keycloak
-  namespace: beg-previews
----
+# Gebunden pro Preview an beg-<id>-keycloak (RoleBinding beg-<id>-keycloak aus dem ResourceSet)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -147,16 +148,12 @@ rules:
     resources: ["keycloakoidcclients"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+# Previews weichen Apps, gehen aber vor CI-Jobs (ci-low -100). Gesetzt per Patch der -app-Kustomization.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
 metadata:
-  name: beg-preview-keycloak
-  namespace: keycloak
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: beg-preview-keycloak
-subjects:
-  - kind: ServiceAccount
-    name: beg-preview-keycloak
-    namespace: beg-previews
+  name: beg-preview
+value: -50
+preemptionPolicy: Never
+globalDefault: false
+description: "Preview-Umgebungen beg-verwaltung (beg-previews): weichen Apps bei Ressourcenknappheit"

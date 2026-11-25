@@ -18,8 +18,19 @@ kubectl -n keycloak apply -f docs/superpowers/spikes/2026-11-beg-previews/spike-
 kubectl -n keycloak get keycloakoidcclients spike-portal spike-crm -o yaml
 ```
 
-Prüfen in der Admin-Konsole `https://auth-beg.hummler.com/admin/master/console/#/beg/clients`
-(Login mit dem Bootstrap-Admin aus `kubectl -n keycloak get secret beg-initial-admin`):
+Prüfen über die Admin-API mit dem Operator-Client aus Secret `beg-admin` (master-Realm, Service-Account; einen
+Admin-Nutzer für die Konsole legt `bootstrapAdmin.service` nicht an):
+
+```powershell
+$id = kubectl -n keycloak get secret beg-admin -o jsonpath='{.data.client-id}' | % { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }
+$sec = kubectl -n keycloak get secret beg-admin -o jsonpath='{.data.client-secret}' | % { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }
+$adm = (Invoke-RestMethod -Method Post https://auth-beg.hummler.com/realms/master/protocol/openid-connect/token -Body @{grant_type='client_credentials'; client_id=$id; client_secret=$sec}).access_token
+Invoke-RestMethod "https://auth-beg.hummler.com/admin/realms/beg/clients?clientId=spike-portal" -Headers @{Authorization="Bearer $adm"} | Select clientId, publicClient, attributes
+Invoke-RestMethod "https://auth-beg.hummler.com/admin/realms/beg/client-scopes" -Headers @{Authorization="Bearer $adm"} | Select name
+```
+
+Erwartet zusätzlich (nach dem Realm-Setup-Job): Scopes `profile`, `email`, `roles`, `beg-roles` vorhanden; ein Token von
+`spike-crm` enthält `sub`, `preferred_username`, `email` und `roles`.
 - `spike-portal`: Client authentication **aus**, PKCE S256?
 - `spike-crm`: Service-Account-Rollen-Tab → `realm-management` manage-users usw.?
 - Token holen und Nutzer anlegen:
