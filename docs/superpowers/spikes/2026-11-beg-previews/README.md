@@ -72,8 +72,12 @@ räumt der Aufräum-Job nicht ab (Client heißt nicht `beg-<id>-crm`) – von Ha
 8. **Neu:** Admin-Events nennen in `authDetails.clientId` die **interne UUID** des Clients, nicht `beg-mr-7-crm`.
    Aufräum-Job übersetzt über die Client-Liste; ist der Client gelöscht (Preview abgebaut), gilt der Nutzer als
    verwaist – sofern der anlegende Client aus Realm `beg` stammt (`authDetails.realmId == realmId`).
-9. Frage 3 (Löschen der CR entfernt den Client): offen – `spike-clients.yaml` ist aus der Spikes-Kustomization genommen,
-   nach dem Push prüfen.
+9. Frage 3: ja – nach Entfernen aus der Spikes-Kustomization (61a2ccc) prunt Flux CRs und Secret, der Operator löscht
+   beide Clients in Keycloak (Admin-API: 0 Treffer).
+
+**Spike A abgeschlossen (2026-11-25).** Konsequenzen für die Preview-Clients: `enabled: true` Pflicht,
+`serviceAccountRoles: [beg-preview-user-admin]`, Rollen/Audience kommen über Default-Scopes `beg-roles` und
+`kc-admin-api` (Realm-Setup-Job), Aufräumen über Admin-Events mit Client-UUIDs.
 
 ## Spike B – Rootless-Image-Build auf dem karibik-Runner (Task 3)
 
