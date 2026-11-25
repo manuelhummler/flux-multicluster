@@ -72,5 +72,19 @@ class PreviewUserAdminRoleTest(unittest.TestCase):
                          {"manage-users", "view-users", "query-users", "query-groups"})
 
 
+class ScopeMappingsTest(unittest.TestCase):
+    """Der Operator legt Clients mit fullScopeAllowed=false an (Spike A 2026-11-25): Tokens enthalten nur Rollen aus
+    den Scope-Mappings. Die Mappings haengen deshalb am Default-Scope beg-roles, den alle Preview-Clients erben."""
+
+    def test_realm_roles_cover_jmix_codes_portal_and_user_admin(self):
+        self.assertTrue({"admin", "system-full-access", "system-user-access", "system-user-readonly",
+                         "bpm-process-task-performer", "portal-user", "beg-preview-user-admin"}
+                        <= set(realm_setup.SCOPE_REALM_ROLES))
+
+    def test_realm_management_roles_match_user_admin_composites(self):
+        self.assertEqual(set(realm_setup.SCOPE_REALM_MANAGEMENT_ROLES),
+                         set(realm_setup.PREVIEW_USER_ADMIN_COMPOSITES))
+
+
 if __name__ == "__main__":
     unittest.main()

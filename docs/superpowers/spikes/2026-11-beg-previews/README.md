@@ -57,7 +57,10 @@ räumt der Aufräum-Job nicht ab (Client heißt nicht `beg-<id>-crm`) – von Ha
 4. **Neu:** Der Operator legt Clients **deaktiviert** an (`enabled: false`), wenn `client.enabled` fehlt – Token
    liefert dann `invalid_client`, obwohl das Secret stimmt. Alle Client-CRs brauchen `enabled: true`; die
    Admission-Policy erzwingt das für Preview-Clients.
-5. Token-Claims, Nutzeranlage, Admin-Event, Löschen: offen (nach Push mit `enabled: true`).
+5. **Neu:** Der Operator legt Clients mit `fullScopeAllowed: false` an (kein CRD-Feld dafür). Tokens enthalten dann
+   nur gemappte Rollen: `roles` fehlte, `realm-management` leer, Admin-API → 401. Lösung: Scope-Mappings (Realm-Rollen
+   + realm-management-Rechte) am Default-Scope `beg-roles` (Realm-Setup-Job, `beg-realm-setup-4`).
+6. Token-Claims, Nutzeranlage, Admin-Event, Löschen: offen (nach Push von `beg-realm-setup-4`).
 
 ## Spike B – Rootless-Image-Build auf dem karibik-Runner (Task 3)
 

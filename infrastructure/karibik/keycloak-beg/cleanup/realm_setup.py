@@ -10,6 +10,9 @@ Standard, und dieser Job ergaenzt, was die Previews brauchen – beliebig oft wi
 3. Service-Account von beg-preview-cleanup bekommt realm-management/view-events (Admin-Events lesen).
 4. Realm-Rolle beg-preview-user-admin (zusammengesetzt aus realm-management manage/view/query-users, query-groups):
    KeycloakOIDCClient.serviceAccountRoles nimmt nur Realm-Rollen (Spike A), die Preview-Clients bekommen diese.
+5. Scope-Mappings am Scope beg-roles: Der Operator legt Clients mit fullScopeAllowed=false an, Tokens enthalten dann
+   nur gemappte Rollen. Ohne diese Mappings fehlen Nutzer-Rollen (Jmix-Codes, portal-user) im Claim "roles" und die
+   realm-management-Rechte im Service-Account-Token.
 
 Umgebung: KEYCLOAK_URL, REALM, ADMIN_CLIENT_ID, ADMIN_CLIENT_SECRET (Service-Account im master-Realm, Secret beg-admin).
 """
@@ -64,6 +67,11 @@ def preview_user_admin_role_payload():
     return {"name": PREVIEW_USER_ADMIN_ROLE, "composite": True,
             "description": "Nutzerverwaltung fuer Preview-Clients (serviceAccountRoles der KeycloakOIDCClients)"}
 
+
+# Rollen, die in Tokens der Preview-Clients duerfen (Scope-Mappings am Default-Scope beg-roles)
+SCOPE_REALM_ROLES = ["admin", "system-full-access", "system-user-access", "system-user-readonly",
+                     "bpm-process-task-performer", "portal-user", PREVIEW_USER_ADMIN_ROLE]
+SCOPE_REALM_MANAGEMENT_ROLES = list(PREVIEW_USER_ADMIN_COMPOSITES)
 
 CLEANUP_CLIENT = "beg-preview-cleanup"
 CLEANUP_EXTRA_ROLES = ["view-events"]
@@ -142,6 +150,17 @@ def main():
     if missing:
         _post_json(f"{role_url}/composites", token, missing)
         print(f"{PREVIEW_USER_ADMIN_ROLE}: Composites ergaenzt {[r['name'] for r in missing]}")
+
+    realm_roles = _request(f"{admin}/roles", token)
+    scope_url = f"{admin}/client-scopes/{scope_id}/scope-mappings"
+    missing = missing_roles(realm_roles, _request(f"{scope_url}/realm", token), SCOPE_REALM_ROLES)
+    if missing:
+        _post_json(f"{scope_url}/realm", token, missing)
+        print(f"{SCOPE_NAME}: Realm-Rollen gemappt {[r['name'] for r in missing]}")
+    missing = missing_roles(rm_roles, _request(f"{scope_url}/clients/{rm_id}", token), SCOPE_REALM_MANAGEMENT_ROLES)
+    if missing:
+        _post_json(f"{scope_url}/clients/{rm_id}", token, missing)
+        print(f"{SCOPE_NAME}: realm-management-Rollen gemappt {[r['name'] for r in missing]}")
 
     changed, cfg = events_config_with_admin_events(_request(f"{admin}/events/config", token))
     if changed:
