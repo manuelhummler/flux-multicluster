@@ -49,16 +49,13 @@ spec:
       # Das Entrypoint-Skript haengt --working-directory=/app/data selbst an
       - name: REPOSILITE_OPTS
         value: "--shared-configuration=/app/config/configuration.shared.json"
-      # VORUEBERGEHEND (Spike B, 2026-11-25): Debug-Log zeigt jeden Upstream-Abruf
-      # ("HttpRemoteClient | <url> responded with <status>") – nach der Fehlersuche wieder entfernen.
-      - name: REPOSILITE_LOCAL_DEBUGENABLED
-        value: "true"
+      # Fehlersuche: REPOSILITE_LOCAL_DEBUGENABLED=true schaltet das Debug-Log ein (Doku 4i, Stolpersteine)
 
     deployment:
       # Reposilite liest die Shared Configuration nur beim Start. Nach JEDER Aenderung an
       # karibik/reposilite/shared-config-encrypted.yaml diesen Wert hochzaehlen – der Pod startet dann neu.
       podAnnotations:
-        reposilite/config-rev: "2"
+        reposilite/config-rev: "3"
       # Nicht-root: Das Entrypoint-Skript startet java dann direkt (ohne chown/runuser); fsGroup macht
       # /app/data fuer UID 977 (User des Images) beschreibbar.
       podSecurityContext:
