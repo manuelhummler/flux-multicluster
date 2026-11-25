@@ -9,22 +9,40 @@ HOUR_MS = 3600 * 1000
 NOW = 1_800_000_000_000
 
 
-def event(user_id, client_id, op="CREATE", resource="USER"):
+REALM_ID = "beg-realm-uuid"
+
+
+def event(user_id, client_uuid, op="CREATE", resource="USER", realm_id=REALM_ID):
     return {"operationType": op, "resourceType": resource, "resourcePath": f"users/{user_id}",
-            "authDetails": {"clientId": client_id}}
+            "authDetails": {"clientId": client_uuid, "realmId": realm_id}}
 
 
 class CreatorsFromAdminEventsTest(unittest.TestCase):
-    def test_user_creation_by_preview_client_is_mapped(self):
-        events = [event("u1", "beg-mr-7-crm")]
-        self.assertEqual(cleanup.creators_from_admin_events(events), {"u1": "beg-mr-7-crm"})
+    def test_user_creation_by_realm_client_is_mapped(self):
+        events = [event("u1", "c-uuid")]
+        self.assertEqual(cleanup.creators_from_admin_events(events, REALM_ID), {"u1": "c-uuid"})
 
     def test_other_operations_and_resources_are_ignored(self):
-        events = [event("u1", "beg-mr-7-crm", op="UPDATE"),
-                  event("u2", "beg-mr-7-crm", resource="GROUP_MEMBERSHIP"),
+        events = [event("u1", "c-uuid", op="UPDATE"),
+                  event("u2", "c-uuid", resource="GROUP_MEMBERSHIP"),
                   {"operationType": "CREATE", "resourceType": "USER", "resourcePath": "users/u3/groups/g1",
-                   "authDetails": {"clientId": "beg-mr-7-crm"}}]
-        self.assertEqual(cleanup.creators_from_admin_events(events), {})
+                   "authDetails": {"clientId": "c-uuid", "realmId": REALM_ID}}]
+        self.assertEqual(cleanup.creators_from_admin_events(events, REALM_ID), {})
+
+    def test_creations_by_master_realm_admins_are_ignored(self):
+        events = [event("u1", "master-client-uuid", realm_id="master-realm-uuid")]
+        self.assertEqual(cleanup.creators_from_admin_events(events, REALM_ID), {})
+
+
+class ResolveCreatorsTest(unittest.TestCase):
+    """Admin-Events nennen in authDetails.clientId die interne UUID des Clients (Spike A 2026-11-25)."""
+
+    def test_internal_client_uuid_is_translated_to_client_id(self):
+        clients = [{"id": "dc98b1ce", "clientId": "beg-mr-7-crm"}]
+        self.assertEqual(cleanup.resolve_creators({"u1": "dc98b1ce"}, clients), {"u1": "beg-mr-7-crm"})
+
+    def test_uuid_of_deleted_client_is_marked_deleted(self):
+        self.assertEqual(cleanup.resolve_creators({"u1": "gone-uuid"}, []), {"u1": cleanup.DELETED_CLIENT})
 
 
 class SelectUsersTest(unittest.TestCase):
@@ -40,6 +58,12 @@ class SelectUsersTest(unittest.TestCase):
     def test_fixed_test_user_without_creation_event_is_kept(self):
         users = [{"id": "u1", "username": "anna.schmidt@test.de", "createdTimestamp": NOW - 100 * HOUR_MS}]
         self.assertEqual(cleanup.select_users_to_delete(users, {}, set(), NOW), [])
+
+    def test_user_created_by_since_deleted_realm_client_is_deleted(self):
+        # Preview weg -> ihr Client ist geloescht -> UUID nicht mehr aufloesbar
+        users = [{"id": "u1", "username": "neu@test.de"}]
+        self.assertEqual(cleanup.select_users_to_delete(users, {"u1": cleanup.DELETED_CLIENT}, {"mr-12"}, NOW),
+                         ["u1"])
 
     def test_user_created_by_non_preview_client_is_kept(self):
         users = [{"id": "u1", "username": "x@test.de"}]

@@ -1,9 +1,10 @@
 """Aufraeum-Job der Preview-Umgebungen von beg-verwaltung (Doku 4j), nur Python-Stdlib.
 
 Loescht im Realm "beg" der Keycloak-Instanz "beg":
-- Nutzer, die der Client beg-<id>-crm einer nicht mehr existierenden Preview angelegt hat. Wer einen Nutzer
-  angelegt hat, steht in den Admin-Events des Realms (eingeschaltet vom Realm-Setup-Job) – die App selbst
-  braucht dafuer keinen Preview-Code,
+- Nutzer, die der Client beg-<id>-crm einer nicht mehr existierenden Preview angelegt hat – oder ein Client des
+  Realms beg, den es nicht mehr gibt (Preview abgebaut). Wer einen Nutzer angelegt hat, steht in den Admin-Events
+  (eingeschaltet vom Realm-Setup-Job, authDetails.clientId = interne Client-UUID) – die App braucht dafuer keinen
+  Preview-Code,
 - E2E-Nutzer (username "e2e-...") aelter als 24 h (Teardown der Suite ist fehlgeschlagen),
 - Clients beg-<id>-crm / beg-<id>-portal ohne Namespace (Keycloak war beim Abbau der Preview nicht erreichbar).
 Feste Testnutzer (Realm-Import, kein Admin-Event) und Service-Account-Nutzer bleiben immer.
@@ -31,19 +32,28 @@ def preview_ids_from_namespaces(names):
 
 
 USER_PATH = re.compile(r"^users/([^/]+)$")
+# Ersatzwert fuer einen anlegenden Client, den es nicht mehr gibt (Preview abgebaut -> Client geloescht)
+DELETED_CLIENT = "<deleted-client>"
 
 
-def creators_from_admin_events(events):
-    """{user_id: clientId} aus Admin-Events 'CREATE USER' (wer hat den Nutzer angelegt)."""
+def creators_from_admin_events(events, realm_id):
+    """{user_id: interne Client-UUID} aus Admin-Events 'CREATE USER', nur fuer Clients dieses Realms.
+    Anlagen durch Admins aus dem master-Realm (realmId != realm_id) zaehlen nicht."""
     creators = {}
     for ev in events:
         if ev.get("operationType") != "CREATE" or ev.get("resourceType") != "USER":
             continue
+        auth = ev.get("authDetails") or {}
         m = USER_PATH.match(ev.get("resourcePath", ""))
-        client_id = (ev.get("authDetails") or {}).get("clientId")
-        if m and client_id:
-            creators[m.group(1)] = client_id
+        if m and auth.get("clientId") and auth.get("realmId") == realm_id:
+            creators[m.group(1)] = auth["clientId"]
     return creators
+
+
+def resolve_creators(creators, clients):
+    """Admin-Events nennen die interne Client-UUID; uebersetzt in clientId, nicht mehr vorhandene -> DELETED_CLIENT."""
+    by_uuid = {c["id"]: c.get("clientId") for c in clients}
+    return {user_id: by_uuid.get(uuid, DELETED_CLIENT) for user_id, uuid in creators.items()}
 
 
 def select_users_to_delete(users, creators, existing_ids, now_ms):
@@ -51,8 +61,9 @@ def select_users_to_delete(users, creators, existing_ids, now_ms):
     for user in users:
         if user.get("serviceAccountClientId") or user.get("username", "").startswith("service-account-"):
             continue
-        m = CLIENT_PATTERN.match(creators.get(user["id"], ""))
-        if m and m.group(2) == "crm" and m.group(1) not in existing_ids:
+        creator = creators.get(user["id"], "")
+        m = CLIENT_PATTERN.match(creator)
+        if creator == DELETED_CLIENT or (m and m.group(2) == "crm" and m.group(1) not in existing_ids):
             result.append(user["id"])
         elif user.get("username", "").startswith("e2e-") and \
                 user.get("createdTimestamp", now_ms) < now_ms - E2E_MAX_AGE_MS:
@@ -118,8 +129,10 @@ def main():
     admin = f"{base}/admin/realms/{realm}"
     users = list(_paged(f"{admin}/users?briefRepresentation=true", token))
     clients = list(_paged(f"{admin}/clients", token))
-    creators = creators_from_admin_events(
-        _paged(f"{admin}/admin-events?operationTypes=CREATE&resourceTypes=USER", token))
+    events = list(_paged(f"{admin}/admin-events?operationTypes=CREATE&resourceTypes=USER", token))
+    # Jedes Event traegt die UUID seines Realms (beg); authDetails.realmId == diese UUID heisst: Client aus beg
+    realm_id = events[0].get("realmId") if events else None
+    creators = resolve_creators(creators_from_admin_events(events, realm_id), clients)
     user_ids = select_users_to_delete(users, creators, existing, int(time.time() * 1000))
     client_ids = select_clients_to_delete(clients, existing)
 

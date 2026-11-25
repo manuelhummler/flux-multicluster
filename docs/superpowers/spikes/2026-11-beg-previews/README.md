@@ -66,7 +66,14 @@ räumt der Aufräum-Job nicht ab (Client heißt nicht `beg-<id>-crm`) – von Ha
    das Master-Token hatte sie. Lösung: `kc-admin-api` als Realm-Default und Default-Scope aller vorhandenen
    Service-Account-Clients (`beg-realm-setup-5`). **Achtung für Dev/Prod:** Nach einem Keycloak-Update auf diese
    Version braucht auch der CRM-Client dort `kc-admin-api` als Default-Scope, sonst scheitert `KeyCloakService`.
-7. Nutzeranlage, Admin-Event, Löschen: offen (nach Push von `beg-realm-setup-5`).
+7. Nach `beg-realm-setup-5`: Token `aud` = `…/admin/realms/beg` + `realm-management`; `spike-crm` legt Nutzer an (201),
+   sucht (200), liest Gruppen (200) – genau, was `KeyCloakService` braucht. Aufräum-Client liest Admin-Events und
+   löscht (204).
+8. **Neu:** Admin-Events nennen in `authDetails.clientId` die **interne UUID** des Clients, nicht `beg-mr-7-crm`.
+   Aufräum-Job übersetzt über die Client-Liste; ist der Client gelöscht (Preview abgebaut), gilt der Nutzer als
+   verwaist – sofern der anlegende Client aus Realm `beg` stammt (`authDetails.realmId == realmId`).
+9. Frage 3 (Löschen der CR entfernt den Client): offen – `spike-clients.yaml` ist aus der Spikes-Kustomization genommen,
+   nach dem Push prüfen.
 
 ## Spike B – Rootless-Image-Build auf dem karibik-Runner (Task 3)
 
