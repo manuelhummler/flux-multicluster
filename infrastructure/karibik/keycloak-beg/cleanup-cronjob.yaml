@@ -1,0 +1,137 @@
+# Stuendlicher Aufraeum-Job fuer den Realm beg (Doku 4j): Nutzer verschwundener Previews (Attribut preview=<id>),
+# E2E-Nutzer aelter 24 h, verwaiste Preview-Clients. Logik und Tests: cleanup/cleanup.py, cleanup/test_cleanup.py.
+# Laeuft im Namespace keycloak, spricht Keycloak "beg" intern an (Service beg-service:8080) und braucht vom
+# kube-apiserver nur "list namespaces". Trockenlauf: kubectl -n keycloak create job --from=cronjob/beg-preview-cleanup
+# cleanup-test, vorher DRY_RUN auf "1" setzen.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: beg-preview-cleanup
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: beg-preview-cleanup
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: beg-preview-cleanup
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: beg-preview-cleanup
+subjects:
+  - kind: ServiceAccount
+    name: beg-preview-cleanup
+    namespace: keycloak
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: beg-preview-cleanup
+spec:
+  schedule: "17 * * * *"
+  timeZone: Europe/Berlin
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: beg-preview-cleanup
+        spec:
+          serviceAccountName: beg-preview-cleanup
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: cleanup
+              image: python:3.13-alpine
+              command: ["python", "/app/cleanup.py"]
+              env:
+                - name: KEYCLOAK_URL
+                  value: http://beg-service.keycloak.svc.cluster.local:8080
+                - name: REALM
+                  value: beg
+                - name: CLIENT_ID
+                  value: beg-preview-cleanup
+                - name: CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: beg-preview-cleanup
+                      key: client-secret
+                - name: DRY_RUN
+                  value: "0"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+              volumeMounts:
+                - name: app
+                  mountPath: /app
+                  readOnly: true
+          volumes:
+            - name: app
+              configMap:
+                name: beg-preview-cleanup
+---
+# Cilium: Job -> Keycloak beg (8080) und kube-apiserver; Keycloak beg nimmt den Job an.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-from-beg-preview-cleanup
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: beg-preview-cleanup
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app: keycloak
+            app.kubernetes.io/instance: beg
+      toPorts:
+        - ports:
+            - port: "8080"
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-ingress-from-beg-preview-cleanup
+spec:
+  endpointSelector:
+    matchLabels:
+      app: keycloak
+      app.kubernetes.io/instance: beg
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: beg-preview-cleanup
+      toPorts:
+        - ports:
+            - port: "8080"

@@ -1,0 +1,42 @@
+# Quellen der Previews (Doku 4j):
+# - beg-merge-requests: alle offenen MRs von einfach-genossenschaft/beg-verwaltung, hoechstens 8 gleichzeitig,
+#   Opt-out per Label "preview::off". Exportiert pro MR id (MR-Nummer), sha, branch, author, title.
+# - beg-main: der Branch main -> dauerhafte Preview beg-main (Ziel von test_e2e nach dem Merge).
+# defaultValues.kind unterscheidet beide im ResourceSet (resourceset.yaml).
+# Takt: alle 2 Minuten (kein Webhook-Receiver; bei Bedarf Flux-Receiver type gitlab ergaenzen).
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: beg-merge-requests
+  namespace: beg-previews
+  annotations:
+    fluxcd.controlplane.io/reconcileEvery: "2m"
+spec:
+  type: GitLabMergeRequest
+  url: https://gitlab.com/einfach-genossenschaft/beg-verwaltung
+  secretRef:
+    name: gitlab-token
+  filter:
+    limit: 8
+  skip:
+    labels:
+      - "preview::off"
+  defaultValues:
+    kind: mr
+---
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: beg-main
+  namespace: beg-previews
+  annotations:
+    fluxcd.controlplane.io/reconcileEvery: "2m"
+spec:
+  type: GitLabBranch
+  url: https://gitlab.com/einfach-genossenschaft/beg-verwaltung
+  secretRef:
+    name: gitlab-token
+  filter:
+    includeBranch: "^main$"
+  defaultValues:
+    kind: main

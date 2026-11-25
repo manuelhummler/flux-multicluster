@@ -1,0 +1,185 @@
+# Preview-Umgebungen von beg-verwaltung (Doku 4j, Design docs/superpowers/specs/2026-11-25-beg-mr-previews-design.md).
+# Pro Input (offener MR bzw. main) entsteht eine Preview mit ID mr-<iid> bzw. main:
+#   Namespace beg-<id>, Host beg-<id>.hummler.com, Clients beg-<id>-crm / beg-<id>-portal in Keycloak "beg".
+# Verschwindet ein MR aus den Inputs (merged/closed/Label preview::off), raeumt der Operator alles ab:
+# erst die Kustomizations (die prunen Deployments und KeycloakOIDCClients -> Operator loescht den Client in
+# Keycloak), dann Namespace, Secrets, RBAC.
+#
+# Templates: << >> (Flux Operator). ${PREVIEW_CLIENT_SECRET_SEED} ersetzt Flux beim postBuild (cluster-secrets):
+# client-secret = sha256("<seed>/<id>") – stabil solange der MR offen ist, eindeutig pro Preview, nicht im Git.
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSet
+metadata:
+  name: beg-previews
+  namespace: beg-previews
+spec:
+  serviceAccountName: beg-previews
+  inputsFrom:
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSetInputProvider
+      name: beg-merge-requests
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSetInputProvider
+      name: beg-main
+  steps:
+    # 1. Namespace + RBAC + ServiceAccount der App-Kustomization
+    - name: namespace
+      timeout: 2m
+      resourcesTemplate: |
+        <<- $id := "main" ->>
+        <<- if eq inputs.kind "mr" ->><<- $id = printf "mr-%v" inputs.id ->><<- end ->>
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: beg-<< $id >>
+          labels:
+            app.kubernetes.io/part-of: beg-preview
+            beg-preview/id: "<< $id >>"
+            # baseline: App-Images (amazoncorretto, nginx) laufen als root; privileged/hostPath bleiben verboten
+            pod-security.kubernetes.io/enforce: baseline
+            pod-security.kubernetes.io/enforce-version: v1.31
+            pod-security.kubernetes.io/warn: restricted
+            pod-security.kubernetes.io/warn-version: v1.31
+          annotations:
+            beg-preview/branch: "<< inputs.branch >>"
+            beg-preview/commit: "sha-<< inputs.sha >>"
+        ---
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: beg-<< $id >>-app
+          namespace: beg-previews
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+          name: beg-preview-app
+          namespace: beg-<< $id >>
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: beg-preview-app
+        subjects:
+          - kind: ServiceAccount
+            name: beg-<< $id >>-app
+            namespace: beg-previews
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+          name: beg-preview-secrets
+          namespace: beg-<< $id >>
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: beg-preview-secrets
+        subjects:
+          - kind: ServiceAccount
+            name: beg-previews
+            namespace: beg-previews
+    # 2. Secrets: Client-Secret (keycloak + Preview-Namespace, gleicher abgeleiteter Wert), Registry-Pull (Kopie)
+    - name: secrets
+      timeout: 2m
+      resourcesTemplate: |
+        <<- $id := "main" ->>
+        <<- if eq inputs.kind "mr" ->><<- $id = printf "mr-%v" inputs.id ->><<- end ->>
+        <<- $secret := printf "%s/%s" "${PREVIEW_CLIENT_SECRET_SEED}" $id | sha256sum ->>
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: beg-<< $id >>-crm-client
+          namespace: keycloak
+          labels:
+            operator.keycloak.org/kind: KeycloakOIDCClient
+            app.kubernetes.io/part-of: beg-preview
+        type: Opaque
+        stringData:
+          client-secret: "<< $secret >>"
+        ---
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: crm-client
+          namespace: beg-<< $id >>
+        type: Opaque
+        stringData:
+          client-secret: "<< $secret >>"
+        ---
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: registry-pull
+          namespace: beg-<< $id >>
+          annotations:
+            fluxcd.controlplane.io/copyFrom: "beg-previews/registry-pull"
+        type: kubernetes.io/dockerconfigjson
+    # 3. Flux-Objekte: Quelle = MR-Commit, App + Keycloak-Clients aus deployment/preview/
+    - name: flux
+      timeout: 2m
+      resourcesTemplate: |
+        <<- $id := "main" ->>
+        <<- if eq inputs.kind "mr" ->><<- $id = printf "mr-%v" inputs.id ->><<- end ->>
+        apiVersion: source.toolkit.fluxcd.io/v1
+        kind: GitRepository
+        metadata:
+          name: beg-<< $id >>
+          namespace: beg-previews
+        spec:
+          interval: 10m
+          url: https://gitlab.com/einfach-genossenschaft/beg-verwaltung.git
+          secretRef:
+            name: gitlab-token
+          ref:
+            commit: "<< inputs.sha >>"
+          ignore: |
+            /*
+            !/deployment/preview
+        ---
+        apiVersion: kustomize.toolkit.fluxcd.io/v1
+        kind: Kustomization
+        metadata:
+          name: beg-<< $id >>-app
+          namespace: beg-previews
+          annotations:
+            beg-preview/url: "https://beg-<< $id >>.hummler.com"
+        spec:
+          interval: 10m
+          retryInterval: 1m
+          timeout: 5m
+          sourceRef:
+            kind: GitRepository
+            name: beg-<< $id >>
+          path: ./deployment/preview/app
+          targetNamespace: beg-<< $id >>
+          serviceAccountName: beg-<< $id >>-app
+          prune: true
+          # Nicht auf Pods warten: das CI-Image kann noch fehlen (ImagePullBackOff loest sich selbst)
+          wait: false
+          postBuild:
+            substitute:
+              PREVIEW_ID: "<< $id >>"
+              PREVIEW_SHA: "<< inputs.sha >>"
+              PREVIEW_HOST: "beg-<< $id >>.hummler.com"
+        ---
+        apiVersion: kustomize.toolkit.fluxcd.io/v1
+        kind: Kustomization
+        metadata:
+          name: beg-<< $id >>-keycloak
+          namespace: beg-previews
+        spec:
+          interval: 10m
+          retryInterval: 1m
+          timeout: 5m
+          sourceRef:
+            kind: GitRepository
+            name: beg-<< $id >>
+          path: ./deployment/preview/keycloak
+          targetNamespace: keycloak
+          serviceAccountName: beg-preview-keycloak
+          prune: true
+          wait: false
+          postBuild:
+            substitute:
+              PREVIEW_ID: "<< $id >>"
+              PREVIEW_SHA: "<< inputs.sha >>"
+              PREVIEW_HOST: "beg-<< $id >>.hummler.com"

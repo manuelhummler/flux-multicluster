@@ -1,0 +1,9 @@
+# Namespace der Preview-Steuerung (InputProvider, ResourceSet, GitRepositories, Kustomizations, ServiceAccounts).
+# Die Previews selbst laufen in eigenen Namespaces beg-mr-<iid> / beg-main.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: beg-previews
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.31

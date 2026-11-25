@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Keycloak-Instanz "beg" (Preview-Umgebungen beg-verwaltung), Doku 4j.
+# Cilium: die Policies aus karibik/keycloak/networkPolicy.yaml waehlen Pods per app=keycloak bzw.
+# app=keycloak-realm-import und gelten damit auch fuer diese Instanz (gleicher Namespace, Operator setzt die Labels).
+namespace: keycloak
+resources:
+  - keycloak.yaml
+  - ingress.yaml
+  - realm-import.yaml
+  # beg-admin (Operator-Zugang), beg-realm-placeholders, beg-e2e-admin. Bearbeiten:
+  #   sops infrastructure/karibik/keycloak-beg/secrets-encrypted.yaml
+  - secrets-encrypted.yaml
+  # beg-preview-cleanup (Client-Secret des Aufraeum-Jobs)
+  - cleanup-secret-encrypted.yaml
+  # Stuendlicher Aufraeum-Job (Nutzer/Clients verschwundener Previews)
+  - cleanup-cronjob.yaml
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: beg-preview-cleanup
+    files:
+      - cleanup/cleanup.py
+secretGenerator:
+  # DB-Zugang: dieselbe SOPS-Datei wie die CNPG-Rolle beg-keycloak
+  - name: beg-keycloak-db
+    type: kubernetes.io/basic-auth
+    envs:
+      - ../cloudnative-pg-cluster/secrets/beg-keycloak-encrypted.env

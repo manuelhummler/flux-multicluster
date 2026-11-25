@@ -1,0 +1,66 @@
+# Keycloak-Instanz "beg" fuer die Preview-Umgebungen von beg-verwaltung (Doku 4j). Eigene Instanz, getrennt von
+# "keycloak" (hopps, spaeter produktiv) und "pro-makler": Testnutzer und viele kurzlebige Clients landen nicht
+# neben produktiven Realms. Muster: Live-CR pro-makler.
+apiVersion: k8s.keycloak.org/v2beta1
+kind: Keycloak
+metadata:
+  name: beg
+spec:
+  instances: 1
+  db:
+    vendor: postgres
+    host: postgres-cluster-rw.cnpg-cluster
+    port: 5432
+    database: beg-keycloak
+    usernameSecret:
+      name: beg-keycloak-db
+      key: username
+    passwordSecret:
+      name: beg-keycloak-db
+      key: password
+  http:
+    httpEnabled: true
+  proxy:
+    headers: xforwarded
+  hostname:
+    hostname: https://auth-beg.hummler.com
+  # Client-CRs (KeycloakOIDCClient, v2alpha1) brauchen die Admin-API v2 - Preview-Feature in Keycloak 26.x
+  features:
+    enabled:
+      - client-admin-api:v2
+  # Service-Account-Client im master-Realm, ueber den der Operator die Clients verwaltet
+  bootstrapAdmin:
+    service:
+      secret: beg-admin
+  ingress:
+    enabled: false
+  networkPolicy:
+    enabled: false
+  additionalOptions:
+    - name: metrics-enabled
+      value: "true"
+  serviceMonitor:
+    enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  update:
+    strategy: RecreateOnImageChange
+  # Namespace keycloak erzwingt PSS restricted (siehe karibik/keycloak/keycloak.yaml)
+  unsupported:
+    podTemplate:
+      spec:
+        securityContext:
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        containers:
+          - securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                  - ALL

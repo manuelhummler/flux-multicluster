@@ -47,6 +47,11 @@ secretGenerator:
     type: kubernetes.io/basic-auth
     envs:
       - secrets/promakler-keycloak-encrypted.env
+  # Keycloak "beg" (Overlay infrastructure/karibik/keycloak-beg bindet dieselbe Datei als beg-keycloak-db ein)
+  - name: beg-keycloak-secret
+    type: kubernetes.io/basic-auth
+    envs:
+      - secrets/beg-keycloak-encrypted.env
   # Hindsight (Overlay infrastructure/karibik/hindsight bindet dieselbe Datei als hindsight-db ein)
   - name: hindsight-secret
     type: kubernetes.io/basic-auth

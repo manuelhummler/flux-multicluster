@@ -77,6 +77,18 @@ spec:
     name: postgres-cluster
   encoding: UTF8
 ---
+# Keycloak-Instanz "beg" (Preview-Umgebungen beg-verwaltung, Doku 4j)
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: beg-keycloak
+spec:
+  name: beg-keycloak
+  owner: beg-keycloak
+  cluster:
+    name: postgres-cluster
+  encoding: UTF8
+---
 # Hindsight (Langzeit-Memory des Hermes Agent, Doku 4g). Nach dem Anlegen einmalig als Superuser:
 #   kubectl -n cnpg-cluster exec postgres-cluster-1 -c postgres -- psql -U postgres -d hindsight -c 'CREATE EXTENSION IF NOT EXISTS vector'
 apiVersion: postgresql.cnpg.io/v1

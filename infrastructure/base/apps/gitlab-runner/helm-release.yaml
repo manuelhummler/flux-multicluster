@@ -1,4 +1,5 @@
-# GitLab Runner (Kubernetes-Executor) fuer gitlab.com, Gruppen-Runner fuer hummler-gbr.
+# GitLab Runner (Kubernetes-Executor) fuer gitlab.com, Gruppen-Runner fuer einfach-genossenschaft
+# (hummler-gbr soll spaeter dazukommen: eigener Gruppen-Runner = eigenes Token, siehe Doku 4h).
 # Entscheidungen und Betrieb: docs/clusters/gitops-karibik.md, Abschnitt 4h.
 #
 # Skalierung: Ein Manager-Pod, jeder CI-Job laeuft in einem eigenen Pod (bis zu "concurrent" gleichzeitig).

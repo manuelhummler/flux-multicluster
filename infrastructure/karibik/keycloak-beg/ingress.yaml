@@ -1,0 +1,24 @@
+# Eigener Traefik-Ingress (wie Instanz keycloak). Service vom Operator: <cr-name>-service, Port 8080.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: beg-keycloak
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: auth-beg.hummler.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: beg-service
+                port:
+                  number: 8080
+  tls:
+    - hosts:
+        - auth-beg.hummler.com
+      secretName: beg-keycloak-tls

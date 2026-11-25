@@ -1,0 +1,162 @@
+# Rechte der Preview-Steuerung (Doku 4j). Drei Ebenen:
+#
+# 1. beg-previews (ResourceSet): rendert NUR die Vorlage aus diesem Repo (resourceset.yaml) – MRs koennen sie
+#    nicht aendern. Legt Namespaces beg-<id>, RoleBindings, ServiceAccounts, Secrets und die Flux-Objekte an.
+# 2. beg-<id>-app (pro Preview, Kustomization -app): wendet deployment/preview/app aus dem MR-Branch an.
+#    Nur im eigenen Namespace, nur die Arten aus ClusterRole beg-preview-app, keine RBAC-/Cluster-Objekte.
+# 3. beg-preview-keycloak (Kustomization -keycloak): wendet deployment/preview/keycloak aus dem MR-Branch an.
+#    Nur KeycloakOIDCClient im Namespace keycloak; Inhalt zusaetzlich per ValidatingAdmissionPolicy begrenzt.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: beg-previews
+  namespace: beg-previews
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: beg-previews-resourceset
+rules:
+  # Preview-Namespaces (Namen per Admission-Policy auf beg-mr-<n>/beg-main begrenzt)
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # RoleBindings in den Preview-Namespaces; "bind" nur auf die zwei vorgesehenen ClusterRoles
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    resourceNames: ["beg-preview-app", "beg-preview-secrets"]
+    verbs: ["bind"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: beg-previews-resourceset
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: beg-previews-resourceset
+subjects:
+  - kind: ServiceAccount
+    name: beg-previews
+    namespace: beg-previews
+---
+# Im eigenen Namespace: ServiceAccounts, Flux-Objekte, Quell-Secret registry-pull lesen (copyFrom)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: beg-previews-resourceset
+  namespace: beg-previews
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources: ["gitrepositories"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
+    resources: ["kustomizations"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: beg-previews-resourceset
+  namespace: beg-previews
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: beg-previews-resourceset
+subjects:
+  - kind: ServiceAccount
+    name: beg-previews
+    namespace: beg-previews
+---
+# Im Namespace keycloak: nur die Client-Secrets beg-<id>-crm-client (Namen per Admission-Policy begrenzt)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: beg-previews-resourceset
+  namespace: keycloak
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: beg-previews-resourceset
+  namespace: keycloak
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: beg-previews-resourceset
+subjects:
+  - kind: ServiceAccount
+    name: beg-previews
+    namespace: beg-previews
+---
+# Pro Preview-Namespace an den ResourceSet-SA gebunden (RoleBinding aus dem ResourceSet): Secrets anlegen
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: beg-preview-secrets
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+# Pro Preview-Namespace an beg-<id>-app gebunden: genau die Arten aus deployment/preview/app
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: beg-preview-app
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["cilium.io"]
+    resources: ["ciliumnetworkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: beg-preview-keycloak
+  namespace: beg-previews
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: beg-preview-keycloak
+  namespace: keycloak
+rules:
+  - apiGroups: ["k8s.keycloak.org"]
+    resources: ["keycloakoidcclients"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: beg-preview-keycloak
+  namespace: keycloak
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: beg-preview-keycloak
+subjects:
+  - kind: ServiceAccount
+    name: beg-preview-keycloak
+    namespace: beg-previews

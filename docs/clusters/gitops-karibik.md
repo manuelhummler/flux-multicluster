@@ -51,7 +51,7 @@ Cluster-Secrets.
 | 3 | Apps: vaultwarden, kimai, dtrack, apicurio, minecraft, hopps-* (juno-care am 2026-11-08 ersatzlos entfernt, kein Umzug; fest-der-demokratie am 2026-11-18 ersatzlos entfernt – `fest-der-demokratie.de` zeigte schon auf einen fremden Server `23.88.102.169`, captain-kube bekam keinen Traffic mehr) | offen |
 | neu | **Hermes Agent** (KI-Harness) unter `hermes.hummler.com`: keine Migration, Neuinstallation nur auf karibik (siehe 4e) | **läuft seit 2026-11-08**; offen: **Backup der PVC**, Egress erweitern, OIDC |
 | neu | **Renovate** (self-hosted) als CronJobs für GitHub `flux-multicluster` und GitLab `hummler-gbr/pro-makler`, ersetzt die Mend-App (siehe 4f) | **läuft seit 2026-11-18** (Bot `manuel-bot-user`); Mend-App am 2026-11-19 entfernt, ihre PRs/Branches/Dashboard geschlossen; offen: Onboarding-MR !1 in pro-makler mergen |
-| neu | **GitLab Runner** (Gruppen-Runner `hummler-gbr`, Kubernetes-Executor, `concurrent: 10`), siehe 4h | **vorbereitet 2026-11-25**; offen: Runner in GitLab anlegen, Token per sops eintragen, Push |
+| neu | **GitLab Runner** (Gruppen-Runner `einfach-genossenschaft`, Kubernetes-Executor, `concurrent: 10`), siehe 4h | **vorbereitet 2026-11-25**; offen: Runner in GitLab anlegen, Token per sops eintragen, Push |
 | neu | **Reposilite** (Maven-Proxy inkl. Jmix premium für die CI, Gradle-Init-Skript im Runner, monatlicher Cache-Cleanup), siehe 4i | **vorbereitet 2026-11-25**; offen: Jmix-Zugangsdaten per sops eintragen, Push, Gradle-Build testen |
 | 4 | captain-kube leerräumen & als 3. Node rejoinen; **danach** Control-Plane auf private IPs (siehe 4d) | offen |
 
@@ -1554,7 +1554,7 @@ Hermes markiert injizierte Erinnerungen im Chat mit 👁️ (`recall_indicator`)
 
 ## 4h. GitLab Runner – CI-Jobs für gitlab.com (vorbereitet 2026-11-25)
 
-Ein **Gruppen-Runner** für `hummler-gbr` auf gitlab.com mit Kubernetes-Executor: Der Manager-Pod pollt
+Ein **Gruppen-Runner** für `einfach-genossenschaft` auf gitlab.com mit Kubernetes-Executor: Der Manager-Pod pollt
 gitlab.com und startet **pro CI-Job einen eigenen Pod** (bis zu 10 gleichzeitig), der nach dem Job wieder
 verschwindet.
 
@@ -1564,7 +1564,7 @@ verschwindet.
 | ----- | ------------ | ---------- |
 | Chart | Offizielles Chart `gitlab/gitlab-runner` `0.95.1` (Runner `19.6.1`) aus `https://charts.gitlab.io` | Der GitLab-Runner-Operator zielt auf OpenShift/OLM; auf Vanilla-Kubernetes ist das Chart der Upstream-Weg. Renovate bumpt die Version. |
 | Skalierung | **Ein** Runner, `concurrent: 10`, je Job ein Pod | Der Manager ist nie der Engpass, mehr Replicas bringen nichts. Kein HPA/KEDA, kein Node-Autoscaling (zwei feste Hetzner-Nodes). Ein zweites HelmRelease nur für ein anderes **Profil** (z.B. Image-Builds mit eigenem Tag/Ressourcen). |
-| Umfang | Gruppen-Runner `hummler-gbr` (alle Projekte der Gruppe) | Neue Projekte bekommen den Runner automatisch. Projekte außerhalb der Gruppe brauchen einen eigenen Runner (zweites HelmRelease + Token). |
+| Umfang | Gruppen-Runner `einfach-genossenschaft` (alle Projekte der Gruppe, u.a. `beg-verwaltung`) | Neue Projekte der Gruppe bekommen den Runner automatisch. `hummler-gbr` soll später dazukommen: ein Gruppen-Runner gehört zu genau einer Gruppe, also eigener Runner in GitLab (eigenes `glrt-`-Token) – zweiter `[[runners]]`-Eintrag bzw. zweites HelmRelease. |
 | Ressourcen | Job: Request 250m/512Mi, Limit 2 CPU/4Gi; per CI-Variable bis 4 CPU/8Gi (`KUBERNETES_MEMORY_LIMIT` usw.). `services:` 2Gi, per `KUBERNETES_SERVICE_MEMORY_LIMIT` bis 8Gi. Helper klein | Requests klein, damit 10 Jobs planbar bleiben; Limits erlauben Burst. Worst Case alle 10 Jobs am Limit = 20 CPU/40Gi – deshalb die PriorityClass. |
 | Node | Job-Pods per `node_selector` nur auf **barbossa** (16 CPU/64 GB; Stand 2026-11-25 ~51 GB frei) | gibbs hat nur 8 GB und trägt Control-Plane + Apps. Nachteil: fällt barbossa aus, läuft keine CI (bewusst in Kauf genommen). |
 | Vorrang der Apps | PriorityClass `ci-low` (Wert −100, `preemptionPolicy: Never`) für Job-Pods | Wird es eng, bleiben Jobs Pending bzw. werden zuerst verdrängt, statt Apps zu blockieren. |
@@ -1585,7 +1585,7 @@ verschwindet.
 
 ### Schritt 1 – Runner in GitLab anlegen
 
-gitlab.com → Gruppe **hummler-gbr** → **Build → Runners** → **New group runner**:
+gitlab.com → Gruppe **einfach-genossenschaft** → **Build → Runners** → **New group runner**:
 
 - **Tags**: z.B. `karibik`
 - **Run untagged jobs**: an, wenn alle Jobs der Gruppe hier laufen sollen; aus, wenn nur Jobs mit Tag `karibik`

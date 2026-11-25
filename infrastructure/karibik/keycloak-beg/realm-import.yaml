@@ -1,0 +1,274 @@
+# Realm "beg" fuer die Preview-Umgebungen (Doku 4j), einmaliger Import durch den Operator.
+# ACHTUNG: KeycloakRealmImport wirkt nur beim ANLEGEN des Realms. Spaetere Aenderungen hier werden NICHT
+# uebernommen - dann Realm in der Admin-Konsole anpassen oder (nur Previews betroffen) Realm loeschen und den
+# Import per Neuanlage der CR wiederholen.
+#
+# Inhalt:
+# - Realm-Rollen = Jmix-Rollen-Codes (jmix.oidc.default-claims-roles-mapper.roles-claim-name=roles) + portal-user
+# - Gruppen <tenant>_member / <tenant>_admin / global_admin (KeyCloakService; Tenant der Previews = "preview")
+# - Client-Scope beg-roles als Default-Scope: KeycloakOIDCClient kennt keine Protocol-Mapper, neue Clients
+#   erben den roles-Claim so automatisch
+# - Client beg-e2e-admin (Service-Account, nur Nutzerverwaltung) fuer die E2E-Suite (Secret in der CI)
+# - Client beg-preview-cleanup (Service-Account, Nutzer + Clients) nur fuer den Aufraeum-CronJob im Cluster
+# - Feste Testnutzer = die ausgedachten Nutzer der Demo-Datenbank (Stand 20261111_104103), mit DENSELBEN IDs wie
+#   beg_user.keycloak_id im Dump, damit der Login an die vorhandenen Jmix-Nutzer koppelt statt Duplikate zu
+#   erzeugen. Konten mit realen Adressen aus dem Dump (@web.de, @beg-paf.de, @beg-in.de) bewusst NICHT
+#   uebernommen. Passwort aller Testnutzer: Placeholder DEMO_PASSWORD (Secret beg-realm-placeholders).
+#   demo@beg-verwaltung.de = CRM-Sachbearbeiter (Gruppe preview_admin), *@test.de = Mitglieder (preview_member).
+apiVersion: k8s.keycloak.org/v2beta1
+kind: KeycloakRealmImport
+metadata:
+  name: beg
+spec:
+  keycloakCRName: beg
+  placeholders:
+    DEMO_PASSWORD:
+      secret:
+        name: beg-realm-placeholders
+        key: demo-password
+    E2E_ADMIN_SECRET:
+      secret:
+        name: beg-realm-placeholders
+        key: e2e-admin-secret
+    CLEANUP_SECRET:
+      secret:
+        name: beg-preview-cleanup
+        key: client-secret
+  realm:
+    realm: beg
+    enabled: true
+    displayName: BEG (Preview)
+    sslRequired: external
+    registrationAllowed: false
+    resetPasswordAllowed: false
+    loginWithEmailAllowed: true
+    duplicateEmailsAllowed: false
+    roles:
+      realm:
+      - name: portal-user
+      - name: admin
+      - name: system-full-access
+      - name: system-user-access
+      - name: system-user-readonly
+      - name: bpm-process-task-performer
+    groups:
+    - name: preview_member
+      realmRoles:
+      - portal-user
+    - name: preview_admin
+      realmRoles:
+      - admin
+      - system-full-access
+      - bpm-process-task-performer
+    - name: global_admin
+      realmRoles:
+      - admin
+      - system-full-access
+      - bpm-process-task-performer
+    clientScopes:
+    - name: beg-roles
+      protocol: openid-connect
+      description: Realm-Rollen als Claim roles (Jmix roles-claim-name)
+      attributes:
+        include.in.token.scope: 'false'
+      protocolMappers:
+      - name: realm-roles-to-roles-claim
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-realm-role-mapper
+        consentRequired: false
+        config:
+          multivalued: 'true'
+          userinfo.token.claim: 'true'
+          id.token.claim: 'true'
+          access.token.claim: 'true'
+          claim.name: roles
+          jsonType.label: String
+    defaultDefaultClientScopes:
+    - basic
+    - profile
+    - email
+    - roles
+    - web-origins
+    - acr
+    - beg-roles
+    clients:
+    - clientId: beg-e2e-admin
+      name: BEG E2E admin (Testnutzer anlegen/loeschen)
+      enabled: true
+      publicClient: false
+      secret: ${E2E_ADMIN_SECRET}
+      standardFlowEnabled: false
+      directAccessGrantsEnabled: false
+      serviceAccountsEnabled: true
+    - clientId: beg-preview-cleanup
+      name: BEG Preview-Aufraeum-Job (Nutzer + verwaiste Clients)
+      enabled: true
+      publicClient: false
+      secret: ${CLEANUP_SECRET}
+      standardFlowEnabled: false
+      directAccessGrantsEnabled: false
+      serviceAccountsEnabled: true
+    users:
+    - id: 22c8ce2c-f102-46c2-bb54-5c3f06eeacf2
+      username: demo@beg-verwaltung.de
+      email: demo@beg-verwaltung.de
+      firstName: Demovorname
+      lastName: Demonachname
+      enabled: true
+      emailVerified: true
+      credentials:
+      - type: password
+        value: ${DEMO_PASSWORD}
+        temporary: false
+      groups:
+      - /preview_admin
+    - id: 61a1f222-b3db-4007-9414-1d756d84377e
+      username: peter.mueller@test.de
+      email: peter.mueller@test.de
+      firstName: Peter
+      lastName: Müller
+      enabled: true
+      emailVerified: true
+      credentials:
+      - type: password
+        value: ${DEMO_PASSWORD}
+        temporary: false
+      groups:
+      - /preview_member
+    - id: 16a390d5-e5d5-4938-a4a9-a59483cbcbfa
+      username: heide.schmidt@test.de
+      email: heide.schmidt@test.de
+      firstName: Heide
+      lastName: Schmidt
+      enabled: true
+      emailVerified: true
+      credentials:
+      - type: password
+        value: ${DEMO_PASSWORD}
+        temporary: false
+      groups:
+      - /preview_member
+    - id: 168c354c-4031-467d-b07c-8dc8c36e82b2
+      username: max.mustermann@test.de
+      email: max.mustermann@test.de
+      firstName: Max
+      lastName: Mustermann
+      enabled: true
+      emailVerified: true
+      credentials:
+      - type: password
+        value: ${DEMO_PASSWORD}
+        temporary: false
+      groups:
+      - /preview_member
+    - id: c02e0633-8966-438b-8dbf-daf5441ea539
+      username: tobias.wagner@test.de
+      email: tobias.wagner@test.de
+      firstName: Tobias
+      lastName: Wagner
+      enabled: true
+      emailVerified: true
+      credentials:
+      - type: password
+        value: ${DEMO_PASSWORD}
+        temporary: false
+      groups:
+      - /preview_member
+    - id: 5ae101b6-929a-4345-b3ab-5e12072f38ae
+      username: markus.schneider@test.de
+      email: markus.schneider@test.de
+      firstName: Markus
+      lastName: Schneider
+      enabled: true
+      emailVerified: true
+      credentials:
+      - type: password
+        value: ${DEMO_PASSWORD}
+        temporary: false
+      groups:
+      - /preview_member
+    - id: bb9885eb-68e3-4e6b-89af-09e1591771f2
+      username: christian.hofmann@test.de
+      email: christian.hofmann@test.de
+      firstName: Christian
+      lastName: Hofmann
+      enabled: true
+      emailVerified: true
+      credentials:
+      - type: password
+        value: ${DEMO_PASSWORD}
+        temporary: false
+      groups:
+      - /preview_member
+    - id: 00f05c01-40ea-481f-b2fa-aa0b7ae5ab9d
+      username: laura.koenig@test.de
+      email: laura.koenig@test.de
+      firstName: Laura
+      lastName: König
+      enabled: true
+      emailVerified: true
+      credentials:
+      - type: password
+        value: ${DEMO_PASSWORD}
+        temporary: false
+      groups:
+      - /preview_member
+    - id: a6b17b6a-d6c5-471d-91a7-b80bd2c54ebe
+      username: anna.schmidt@test.de
+      email: anna.schmidt@test.de
+      firstName: Anna
+      lastName: Schmidt
+      enabled: true
+      emailVerified: true
+      credentials:
+      - type: password
+        value: ${DEMO_PASSWORD}
+        temporary: false
+      groups:
+      - /preview_member
+    - id: f7241ca5-43e4-4849-919c-3e2ae39e6b97
+      username: julia.becker@test.de
+      email: julia.becker@test.de
+      firstName: Julia
+      lastName: Becker
+      enabled: true
+      emailVerified: true
+      credentials:
+      - type: password
+        value: ${DEMO_PASSWORD}
+        temporary: false
+      groups:
+      - /preview_member
+    - id: 24ddac87-9147-413e-8619-25ee015aeeb9
+      username: lisa.weber@test.de
+      email: lisa.weber@test.de
+      firstName: Lisa
+      lastName: Weber
+      enabled: true
+      emailVerified: true
+      credentials:
+      - type: password
+        value: ${DEMO_PASSWORD}
+        temporary: false
+      groups:
+      - /preview_member
+    - username: service-account-beg-e2e-admin
+      enabled: true
+      serviceAccountClientId: beg-e2e-admin
+      clientRoles:
+        realm-management:
+        - manage-users
+        - view-users
+        - query-users
+        - query-groups
+    - username: service-account-beg-preview-cleanup
+      enabled: true
+      serviceAccountClientId: beg-preview-cleanup
+      clientRoles:
+        realm-management:
+        - manage-users
+        - view-users
+        - query-users
+        - manage-clients
+        - view-clients
+        - query-clients

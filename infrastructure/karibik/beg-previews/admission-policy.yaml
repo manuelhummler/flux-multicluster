@@ -1,0 +1,155 @@
+# ValidatingAdmissionPolicies der Preview-Steuerung (Doku 4j). RBAC kann Namen und Feldinhalte nicht
+# einschraenken – das uebernehmen diese Policies, jeweils nur fuer die ServiceAccounts der Previews:
+#
+# 1. ResourceSet-SA darf nur Namespaces beg-mr-<n>/beg-main anlegen/aendern/loeschen
+# 2. ResourceSet-SA darf in keycloak nur Secrets beg-<id>-crm-client schreiben
+# 3. Manifeste aus MR-Branches (SA beg-preview-keycloak) duerfen nur Clients fuer Instanz/Realm beg mit
+#    Preview-Redirects und erlaubten Service-Account-Rollen anlegen
+# 4. Manifeste aus MR-Branches (SA beg-<id>-app) duerfen Ingresses nur fuer den eigenen Host anlegen
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: beg-preview-namespaces
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["namespaces"]
+  matchConditions:
+    - name: resourceset-sa
+      expression: request.userInfo.username == 'system:serviceaccount:beg-previews:beg-previews'
+  validations:
+    - expression: >-
+        (request.operation == 'DELETE' ? oldObject.metadata.name : object.metadata.name).matches('^beg-(mr-[0-9]+|main)$')
+      message: "beg-previews darf nur Namespaces beg-mr-<n> oder beg-main verwalten"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: beg-preview-namespaces
+spec:
+  policyName: beg-preview-namespaces
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: beg-preview-keycloak-secrets
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: keycloak
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["secrets"]
+  matchConditions:
+    - name: resourceset-sa
+      expression: request.userInfo.username == 'system:serviceaccount:beg-previews:beg-previews'
+  validations:
+    - expression: >-
+        (request.operation == 'DELETE' ? oldObject.metadata.name : object.metadata.name).matches('^beg-(mr-[0-9]+|main)-crm-client$')
+      message: "beg-previews darf in keycloak nur Secrets beg-<id>-crm-client verwalten"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: beg-preview-keycloak-secrets
+spec:
+  policyName: beg-preview-keycloak-secrets
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: beg-preview-keycloak-clients
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["k8s.keycloak.org"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["keycloakoidcclients"]
+  matchConditions:
+    - name: preview-keycloak-sa
+      expression: request.userInfo.username == 'system:serviceaccount:beg-previews:beg-preview-keycloak'
+  variables:
+    # spec.client ist im CRD Pflichtfeld
+    - name: client
+      expression: object.spec.client
+    # Erlaubte Service-Account-Rollen (Nutzerverwaltung im Realm beg). Format aus dem Spike Task 2 – vorlaeufig
+    # beide denkbaren Schreibweisen.
+    - name: allowedRoles
+      expression: >-
+        ['realm-management/manage-users', 'realm-management/view-users', 'realm-management/query-users',
+         'realm-management/query-groups', 'realm-management/view-realm',
+         'manage-users', 'view-users', 'query-users', 'query-groups', 'view-realm']
+  validations:
+    - expression: object.spec.keycloakCRName == 'beg'
+      message: "Preview-Clients nur fuer die Keycloak-Instanz beg"
+    - expression: object.spec.realm == 'beg'
+      message: "Preview-Clients nur im Realm beg"
+    - expression: object.metadata.name.matches('^beg-(mr-[0-9]+|main)-(crm|portal)$')
+      message: "Client-Name muss beg-<id>-crm oder beg-<id>-portal sein"
+    - expression: >-
+        !has(variables.client.redirectUris) ||
+        variables.client.redirectUris.all(u, u.matches('^https://beg-(mr-[0-9]+|main)\\.hummler\\.com/'))
+      message: "Redirect-URIs nur auf https://beg-<id>.hummler.com/"
+    - expression: >-
+        !has(variables.client.webOrigins) ||
+        variables.client.webOrigins.all(o, o == '+' || o.matches('^https://beg-(mr-[0-9]+|main)\\.hummler\\.com$'))
+      message: "Web-Origins nur '+' oder https://beg-<id>.hummler.com"
+    - expression: >-
+        !has(variables.client.serviceAccountRoles) ||
+        variables.client.serviceAccountRoles.all(r, r in variables.allowedRoles)
+      message: "Service-Account-Rollen nur aus der Allowlist (Nutzerverwaltung)"
+    - expression: >-
+        !has(variables.client.auth) || !has(variables.client.auth.secretRef) ||
+        variables.client.auth.secretRef.name == object.metadata.name + '-client'
+      message: "Client-Secret nur aus dem Secret <client-name>-client"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: beg-preview-keycloak-clients
+spec:
+  policyName: beg-preview-keycloak-clients
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: beg-preview-ingress-hosts
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["networking.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["ingresses"]
+  matchConditions:
+    - name: preview-app-sa
+      expression: >-
+        request.userInfo.username.startsWith('system:serviceaccount:beg-previews:beg-') &&
+        request.userInfo.username.endsWith('-app')
+  validations:
+    - expression: >-
+        object.spec.rules.all(r, has(r.host) && r.host == request.namespace + '.hummler.com') &&
+        (!has(object.spec.tls) || object.spec.tls.all(t, t.hosts.all(h, h == request.namespace + '.hummler.com')))
+      message: "Preview-Ingress nur fuer den eigenen Host <namespace>.hummler.com"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: beg-preview-ingress-hosts
+spec:
+  policyName: beg-preview-ingress-hosts
+  validationActions: [Deny]

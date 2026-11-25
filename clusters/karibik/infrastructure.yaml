@@ -548,7 +548,7 @@ spec:
       name: renovate-gitlab
       namespace: renovate
 ---
-# gitlab-runner: Gruppen-Runner fuer gitlab.com hummler-gbr (Kubernetes-Executor, bis zu 10 Jobs parallel),
+# gitlab-runner: Gruppen-Runner fuer gitlab.com einfach-genossenschaft (Kubernetes-Executor, bis zu 10 Jobs parallel),
 # siehe docs/clusters/gitops-karibik.md 4h. Token in infrastructure/karibik/gitlab-runner/runner-token-encrypted.yaml.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -602,3 +602,64 @@ spec:
       kind: HelmRelease
       name: reposilite
       namespace: reposilite
+---
+# keycloak-beg: Keycloak-Instanz "beg" + Realm-Import fuer die Preview-Umgebungen von beg-verwaltung, Doku 4j.
+# Bewusst OHNE postBuild.substituteFrom: der Realm-Import enthaelt ${DEMO_PASSWORD}/${E2E_ADMIN_SECRET} als
+# Operator-Placeholders (KeycloakRealmImport.spec.placeholders), Flux darf sie nicht ersetzen.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: keycloak-beg
+  namespace: flux-system
+spec:
+  timeout: 10m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: keycloak-operator
+    - name: cloudnative-pg-cluster
+    - name: cert-manager
+    - name: traefik
+    # Cilium-Policies des Namespace keycloak (karibik/keycloak/networkPolicy.yaml)
+    - name: keycloak
+  path: ./infrastructure/karibik/keycloak-beg
+  prune: true
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: beg
+      namespace: keycloak
+---
+# beg-previews: Preview-Umgebungen pro MR (+ main) fuer gitlab.com einfach-genossenschaft/beg-verwaltung per
+# Flux Operator ResourceSet, Doku 4j. App-Vorlage im App-Repo unter deployment/preview/. postBuild: nur
+# PREVIEW_CLIENT_SECRET_SEED aus cluster-secrets (Templates des ResourceSet nutzen << >>, nicht ${}).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: beg-previews
+  namespace: flux-system
+spec:
+  timeout: 5m0s
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: keycloak-beg
+    - name: cluster-issuer
+  path: ./infrastructure/karibik/beg-previews
+  prune: true
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets

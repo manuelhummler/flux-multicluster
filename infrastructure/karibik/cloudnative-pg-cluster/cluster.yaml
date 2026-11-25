@@ -59,6 +59,12 @@ spec:
         comment: pro-makler keycloak instance user
         passwordSecret:
           name: promakler-keycloak-secret
+      # Keycloak-Instanz "beg" fuer die Preview-Umgebungen von beg-verwaltung (Doku 4j)
+      - name: beg-keycloak
+        login: true
+        comment: beg preview keycloak instance user
+        passwordSecret:
+          name: beg-keycloak-secret
       # Hindsight (Langzeit-Memory des Hermes Agent, Doku 4g): Postgres mit pgvector. Die Extension
       # "vector" ist nicht "trusted" und wird einmalig als Superuser angelegt (Rezept in der Doku) –
       # die Database-CRD des Operators 1.25 kennt spec.extensions noch nicht.

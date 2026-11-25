@@ -54,3 +54,13 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
+    # Preview-Umgebungen ueber ihre oeffentliche URL (test_e2e, Abschnitt 4j): je nach LB-Pfad "world" (oben)
+    # oder direkt die Traefik-Pods, wenn Cilium die LB-IP im Cluster uebersetzt.
+    - toEndpoints:
+        - matchLabels:
+            io.cilium.k8s.policy.serviceaccount: traefik
+            io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP

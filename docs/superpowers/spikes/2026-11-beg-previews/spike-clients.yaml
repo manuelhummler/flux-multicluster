@@ -1,0 +1,46 @@
+# Spike A (README.md): zwei Test-Clients gegen Keycloak "beg". Nur nach Freigabe anwenden, danach loeschen.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: spike-crm-client
+  namespace: keycloak
+  labels:
+    operator.keycloak.org/kind: KeycloakOIDCClient
+type: Opaque
+stringData:
+  client-secret: spike-only-secret-delete-after-test-0001
+---
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: KeycloakOIDCClient
+metadata:
+  name: spike-portal
+  namespace: keycloak
+spec:
+  keycloakCRName: beg
+  realm: beg
+  client:
+    loginFlows: [STANDARD]
+    redirectUris: ["https://beg-mr-0.hummler.com/*"]
+    webOrigins: ["+"]
+---
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: KeycloakOIDCClient
+metadata:
+  name: spike-crm
+  namespace: keycloak
+spec:
+  keycloakCRName: beg
+  realm: beg
+  client:
+    loginFlows: [STANDARD, SERVICE_ACCOUNT]
+    redirectUris: ["https://beg-mr-0.hummler.com/*"]
+    auth:
+      method: client-secret
+      secretRef:
+        name: spike-crm-client
+        key: client-secret
+    serviceAccountRoles:
+      - realm-management/manage-users
+      - realm-management/view-users
+      - realm-management/query-users
+      - realm-management/query-groups
