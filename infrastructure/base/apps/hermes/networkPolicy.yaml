@@ -241,8 +241,8 @@ spec:
         - ports:
             - port: "443"
 ---
-# Lexware Office (lexoffice, Doku 4e "Lexware Office"): REST-API api.lexoffice.io fuer das lexoffice-Skill
-# (Buchhaltung Hummler Consulting).
+# Lexware Office (lexoffice, Doku 4e "Lexware Office"): REST-API fuer das lexoffice-Skill (Buchhaltung Hummler
+# Consulting). api.lexware.io ist der Host seit der Umbenennung, api.lexoffice.io der alte; beide antworten.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -253,6 +253,7 @@ spec:
       io.cilium.k8s.policy.serviceaccount: hermes
   egress:
     - toFQDNs:
+        - matchName: api.lexware.io
         - matchName: api.lexoffice.io
       toPorts:
         - ports:

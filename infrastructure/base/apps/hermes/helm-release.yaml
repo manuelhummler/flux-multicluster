@@ -284,7 +284,7 @@ spec:
                       /opt/hermes/.venv/bin/python -P - "$LEX_CRED_DIR/credentials.json" <<'PY'
                     import json, os, sys
                     with open(sys.argv[1], "w", encoding="utf-8") as f:
-                        json.dump({"api_key": os.environ["LEXOFFICE_API_KEY"], "base_url": "https://api.lexoffice.io/v1"}, f, indent=2)
+                        json.dump({"api_key": os.environ["LEXOFFICE_API_KEY"], "base_url": "https://api.lexware.io/v1"}, f, indent=2)
                     PY
                       umask 022
                       echo "[install-extras] Lexware-Office-Key nach $LEX_CRED_DIR/credentials.json geschrieben"
@@ -392,7 +392,7 @@ spec:
                       '' \
                       '## Lexware Office (lexoffice, Hummler Consulting)' \
                       '' \
-                      'Die Buchhaltung von Hummler Consulting laeuft in Lexware Office (REST-API https://api.lexoffice.io/v1,' \
+                      'Die Buchhaltung von Hummler Consulting laeuft in Lexware Office (REST-API https://api.lexware.io/v1,' \
                       'Egress ist frei). Der API-Key liegt NUR in ~/.config/lexoffice/credentials.json (Feld api_key); nie im' \
                       'Chat, in Logs oder in Skill-Dateien wiedergeben. Ein Skill dafuer darf unter skills/business/lexoffice' \
                       'angelegt werden und muss den Key aus dieser Datei lesen. Der Key kann technisch alles, die Grenze' \

@@ -482,7 +482,7 @@ behält `*.kube.hummler.com` (geprüft: kein captain-kube-Ingress liegt direkt u
 | Langzeit-Memory | **Hindsight** (self-hosted, Namespace `hindsight`) als Memory-Provider-Plugin; eingebautes Memory bleibt aktiv – siehe **4g** | Entscheidung 2026-11-18 nach Vergleich mit Honcho (Persönlichkeitsmodell, Cloud oder bezahlter API-Key), hwiki (Markdown, kein LLM) und den gehosteten Anbietern: Fakten-/Entitäts-Graph mit zeitlicher Suche passt zu einem Assistenten für Projekte, Server und Termine; ChatGPT-Abo nutzbar, offene UI, alles im Cluster. |
 | Weitere Modelle | Zweiter Anbieter **regio-ai** (OpenAI-kompatibel: `kimi-k3`, `glm-5.3`, `deepseek-v41-flash`, `auto`) als `providers.regio-ai`; Fallback-Kette `fallback_model` (kimi-k3, dann glm-5.3) hinter Codex; Subagenten (`delegation`) auf `deepseek-v41-flash`; Egress `workspace.regio-ai.eu` | Entscheidung 2026-11-18. Entlastet das geteilte ChatGPT-Limit (Hermes + Hindsight) und hält den Agenten bei Codex-Ausfall antwortfähig. Basis-URL (mit Tenant-ID) in cluster-secrets, Key in hermes-secrets über `key_env`. Details unten „Weitere Modelle“. |
 | Odoo | Eigenes Skill `odoo` (XML-RPC, Standardbibliothek) gegen Odoo Online `beg-paf.odoo.com` mit API-Key eines eigenen Benutzers; Zugangsdaten als Datei im Agenten-HOME; Löschen/Buchen nur mit `--yes`; Egress `beg-paf.odoo.com` | Entscheidung 2026-11-18. Kein Modul installierbar (Online), kein Hermes-Katalogeintrag, Drittanbieter-MCPs wären Fremdcode. Nutzer wollte Vollzugriff: Grenze ist der Odoo-Benutzer. Details unten „Odoo“. |
-| Lexware Office | Nur Zugang aus Git (`LEXOFFICE_API_KEY` → Datei im Agenten-HOME, Egress `api.lexoffice.io`); das Skill schreibt Hermes selbst auf die PVC | Entscheidung 2026-11-25. Schneller Start, Nachbessern im Dialog; nicht in Git/Backup – bei Bewährung wie `odoo` ins Repo. Details unten „Lexware Office“. |
+| Lexware Office | Nur Zugang aus Git (`LEXOFFICE_API_KEY` → Datei im Agenten-HOME, Egress `api.lexware.io`/`api.lexoffice.io`); das Skill schreibt Hermes selbst auf die PVC | Entscheidung 2026-11-25. Schneller Start, Nachbessern im Dialog; nicht in Git/Backup – bei Bewährung wie `odoo` ins Repo. Details unten „Lexware Office“. |
 | Backup | **offen** – siehe TODO unten | karibik hat noch kein Longhorn-Backup-Target. |
 
 ### Aufbau
@@ -1106,7 +1106,7 @@ weder in Git noch im Backup liegt (die Hermes-PVC hat noch kein Backup-Ziel) –
 | --- | --- |
 | Key | `LEXOFFICE_API_KEY` in `hermes-env-encrypted.env` (Lexware Office: Einstellungen → Public API → Schlüssel erzeugen; gilt für das ganze Konto, keine Rechtetrennung) |
 | Zugang in der Agenten-Shell | `install-extras` schreibt `/opt/data/home/.config/lexoffice/credentials.json` (0600, Felder `api_key`, `base_url`); ohne Wert wird die Datei entfernt |
-| Egress | `allow-egress-to-lexoffice` (`api.lexoffice.io`, 443) |
+| Egress | `allow-egress-to-lexoffice` (`api.lexware.io` und `api.lexoffice.io`, 443) – der neue Host seit der Umbenennung und der alte; beide antworten |
 | Regeln für den Agenten | HERMES.md: Key nie wiedergeben, Skill liest die Datei; Rechnungen/Angebote **nur als Entwurf** (`finalize=false`, nie finalisieren, nie versenden), Belege **nur per `/files` hochladen** (landen unverbucht in der Belegablage), Schreiben nur auf Anweisung |
 
 **Rechte:** Lexware-Office-Keys kennen keine Stufen, jeder Key kann alles, was das Konto kann (Rechnungen
@@ -1116,12 +1116,16 @@ kein `DELETE`) und in HERMES.md. Versand per E-Mail ist über die API ohnehin ni
 
 Einrichten: Key eintragen (`sops infrastructure/karibik/hermes/hermes-env-encrypted.env`), Push, dann im Chat:
 „Lege ein Skill lexoffice unter skills/business/lexoffice an. Key aus ~/.config/lexoffice/credentials.json,
-API https://api.lexoffice.io/v1 (Header Authorization: Bearer, Accept: application/json, Rate-Limit 2/s).
+API-Basis-URL aus dem Feld base_url der Datei (Header Authorization: Bearer, Accept: application/json, Rate-Limit 2/s).
 Befehle: contacts, invoices, quotations, voucherlist, voucher-get, files-upload; Rechnungen und Angebote nur
 mit finalize=false anlegen, Belege nur per POST /files hochladen, keine Lösch- oder Finalisierungsbefehle.“
 Prüfen mit `hermes skills list` bzw. einer Testfrage („Welche Rechnungen sind offen?“).
 
 API-Grenzen: keine Mahnungen, kein DATEV-Export, kein E-Mail-Versand; Rate-Limit 2 Anfragen/s.
+
+Stolperstein (2026-11-25): Hermes' erster Skill-Entwurf hatte `https://api.lexware.io/v1` fest eingetragen, die
+Policy kannte nur `api.lexoffice.io` → „network error or timeout“. Seitdem sind beide Hosts frei und `base_url`
+in der Zugangsdatei zeigt auf `api.lexware.io`; das Skill soll die URL aus der Datei lesen, nicht hart kodieren.
 
 ### Egress erweitern (Rezept)
 
