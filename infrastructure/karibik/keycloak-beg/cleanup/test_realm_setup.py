@@ -25,29 +25,37 @@ class ScopeTest(unittest.TestCase):
         self.assertEqual(mapper["config"]["id.token.claim"], "true")
 
 
-class UserProfileTest(unittest.TestCase):
-    def test_policy_added_when_missing(self):
-        profile = {"attributes": [{"name": "username"}]}
-        changed, new = realm_setup.profile_with_admin_edit(profile)
-        self.assertTrue(changed)
-        self.assertEqual(new["unmanagedAttributePolicy"], "ADMIN_EDIT")
-        self.assertEqual(new["attributes"], [{"name": "username"}])
+class AdminEventsTest(unittest.TestCase):
+    """Admin-Events halten fest, welcher Client einen Nutzer angelegt hat – Grundlage des Aufraeum-Jobs."""
 
-    def test_unchanged_when_policy_already_set(self):
-        profile = {"attributes": [], "unmanagedAttributePolicy": "ADMIN_EDIT"}
-        changed, _ = realm_setup.profile_with_admin_edit(profile)
+    def test_admin_events_enabled_when_off(self):
+        changed, cfg = realm_setup.events_config_with_admin_events({"adminEventsEnabled": False, "eventsEnabled": False})
+        self.assertTrue(changed)
+        self.assertTrue(cfg["adminEventsEnabled"])
+        self.assertFalse(cfg["eventsEnabled"])
+
+    def test_unchanged_when_already_enabled(self):
+        changed, _ = realm_setup.events_config_with_admin_events({"adminEventsEnabled": True})
         self.assertFalse(changed)
 
-    def test_stricter_policy_is_widened_to_admin_edit(self):
-        profile = {"attributes": [], "unmanagedAttributePolicy": "ADMIN_VIEW"}
-        changed, new = realm_setup.profile_with_admin_edit(profile)
+    def test_missing_flag_counts_as_off(self):
+        changed, cfg = realm_setup.events_config_with_admin_events({})
         self.assertTrue(changed)
-        self.assertEqual(new["unmanagedAttributePolicy"], "ADMIN_EDIT")
+        self.assertTrue(cfg["adminEventsEnabled"])
 
-    def test_more_permissive_policy_is_kept(self):
-        profile = {"attributes": [], "unmanagedAttributePolicy": "ENABLED"}
-        changed, _ = realm_setup.profile_with_admin_edit(profile)
-        self.assertFalse(changed)
+
+class ServiceAccountRolesTest(unittest.TestCase):
+    """Der Aufraeum-Client braucht view-events, um die Admin-Events zu lesen."""
+
+    def test_missing_role_is_returned(self):
+        available = [{"id": "r1", "name": "view-events"}, {"id": "r2", "name": "manage-users"}]
+        current = [{"id": "r2", "name": "manage-users"}]
+        self.assertEqual(realm_setup.missing_roles(available, current, ["view-events"]),
+                         [{"id": "r1", "name": "view-events"}])
+
+    def test_nothing_missing_when_already_mapped(self):
+        available = [{"id": "r1", "name": "view-events"}]
+        self.assertEqual(realm_setup.missing_roles(available, available, ["view-events"]), [])
 
 
 if __name__ == "__main__":

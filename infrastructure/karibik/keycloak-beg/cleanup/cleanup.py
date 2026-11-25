@@ -1,11 +1,12 @@
 """Aufraeum-Job der Preview-Umgebungen von beg-verwaltung (Doku 4j), nur Python-Stdlib.
 
 Loescht im Realm "beg" der Keycloak-Instanz "beg":
-- Nutzer mit Attribut preview=<id>, deren Preview-Namespace beg-<id> nicht mehr existiert
-  (die App setzt das Attribut, KeyCloakService.buildCreateUserPayload),
+- Nutzer, die der Client beg-<id>-crm einer nicht mehr existierenden Preview angelegt hat. Wer einen Nutzer
+  angelegt hat, steht in den Admin-Events des Realms (eingeschaltet vom Realm-Setup-Job) – die App selbst
+  braucht dafuer keinen Preview-Code,
 - E2E-Nutzer (username "e2e-...") aelter als 24 h (Teardown der Suite ist fehlgeschlagen),
 - Clients beg-<id>-crm / beg-<id>-portal ohne Namespace (Keycloak war beim Abbau der Preview nicht erreichbar).
-Feste Testnutzer (ohne preview-Attribut) und Service-Account-Nutzer bleiben immer.
+Feste Testnutzer (Realm-Import, kein Admin-Event) und Service-Account-Nutzer bleiben immer.
 
 Umgebung: KEYCLOAK_URL, REALM, CLIENT_ID, CLIENT_SECRET, DRY_RUN=1 (nur ausgeben).
 Kubernetes-Zugriff ueber den ServiceAccount des Pods (nur "list namespaces").
@@ -29,13 +30,29 @@ def preview_ids_from_namespaces(names):
     return {m.group(1) for m in (NAMESPACE_PATTERN.match(n) for n in names) if m}
 
 
-def select_users_to_delete(users, existing_ids, now_ms):
+USER_PATH = re.compile(r"^users/([^/]+)$")
+
+
+def creators_from_admin_events(events):
+    """{user_id: clientId} aus Admin-Events 'CREATE USER' (wer hat den Nutzer angelegt)."""
+    creators = {}
+    for ev in events:
+        if ev.get("operationType") != "CREATE" or ev.get("resourceType") != "USER":
+            continue
+        m = USER_PATH.match(ev.get("resourcePath", ""))
+        client_id = (ev.get("authDetails") or {}).get("clientId")
+        if m and client_id:
+            creators[m.group(1)] = client_id
+    return creators
+
+
+def select_users_to_delete(users, creators, existing_ids, now_ms):
     result = []
     for user in users:
         if user.get("serviceAccountClientId") or user.get("username", "").startswith("service-account-"):
             continue
-        preview = (user.get("attributes") or {}).get("preview") or []
-        if preview and preview[0] not in existing_ids:
+        m = CLIENT_PATTERN.match(creators.get(user["id"], ""))
+        if m and m.group(2) == "crm" and m.group(1) not in existing_ids:
             result.append(user["id"])
         elif user.get("username", "").startswith("e2e-") and \
                 user.get("createdTimestamp", now_ms) < now_ms - E2E_MAX_AGE_MS:
@@ -99,9 +116,11 @@ def main():
 
     existing = preview_ids_from_namespaces(_namespaces())
     admin = f"{base}/admin/realms/{realm}"
-    users = list(_paged(f"{admin}/users?briefRepresentation=false", token))
+    users = list(_paged(f"{admin}/users?briefRepresentation=true", token))
     clients = list(_paged(f"{admin}/clients", token))
-    user_ids = select_users_to_delete(users, existing, int(time.time() * 1000))
+    creators = creators_from_admin_events(
+        _paged(f"{admin}/admin-events?operationTypes=CREATE&resourceTypes=USER", token))
+    user_ids = select_users_to_delete(users, creators, existing, int(time.time() * 1000))
     client_ids = select_clients_to_delete(clients, existing)
 
     names = {u["id"]: u.get("username") for u in users}

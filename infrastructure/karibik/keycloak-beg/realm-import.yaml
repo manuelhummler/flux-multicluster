@@ -246,3 +246,4 @@ spec:
         - manage-clients
         - view-clients
         - query-clients
+        - view-events

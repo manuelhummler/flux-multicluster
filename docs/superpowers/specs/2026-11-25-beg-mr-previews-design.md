@@ -173,11 +173,10 @@ karibik / Flux Operator
   Platzhaltern). Dazu ein statischer, vertraulicher Client **`beg-e2e-admin`** (Service-Account mit
   Nutzerverwaltung im Realm `beg`), mit dem die E2E-Suite pro Pipeline ihren eigenen Testnutzer anlegt und wieder
   löscht (§6.7); sein Secret liegt als maskierte CI-Variable in beg-verwaltung.
-- **Aufräumen von Preview-Nutzern:** Nutzer, die das Backend einer Preview in Keycloak anlegt, tragen das
-  Attribut `preview=<id>` (kleine App-Änderung in `KeyCloakService.createUser`, gesteuert über die Property
-  `keycloakservice.config.preview-id` bzw. Env `KEYCLOAKSERVICE_CONFIG_PREVIEWID`; ohne Wert unverändert). Ein CronJob der Plattform löscht stündlich Nutzer im Realm `beg`,
-  deren `preview`-Namespace `beg-mr-<id>` nicht mehr existiert, sowie E2E-Nutzer älter als 24 h. Feste
-  Testnutzer haben kein `preview`-Attribut und bleiben.
+- **Aufräumen von Preview-Nutzern:** ohne Preview-Code in der App (Nutzer-Entscheidung 2026-11-25). Der Realm
+  zeichnet Admin-Events auf; wer einen Nutzer angelegt hat, steht dort als Client `beg-<id>-crm`. Ein CronJob der
+  Plattform löscht stündlich Nutzer, deren anlegender Preview-Client keinen Namespace `beg-<id>` mehr hat, E2E-Nutzer
+  älter als 24 h und verwaiste Preview-Clients. Feste Testnutzer (Realm-Import, kein Admin-Event) bleiben.
 - **Demo-Daten-Image** `registry.gitlab.com/einfach-genossenschaft/beg-verwaltung/demo-data:<YYYYMMDD_HHMMSS>`
   (enthält `beg.sql` + `jmix.zip`). **Neue Stände lädt der Nutzer von Hand hoch** (Nutzer-Entscheidung; später
   evtl. automatisiert vom Demo-Server aus): Ein kleines `Dockerfile` (`FROM busybox`, `COPY beg.sql jmix.zip /data/`)

@@ -5,8 +5,9 @@ clientScopes-Liste unterdrueckt die eingebauten Scopes (profile, email, roles, .
 Standard, und dieser Job ergaenzt, was die Previews brauchen – beliebig oft wiederholbar:
 1. Client-Scope "beg-roles" (Realm-Rollen als Top-Level-Claim "roles" fuer Jmix) als Realm-Default-Scope:
    KeycloakOIDCClient kennt keine Protocol-Mapper, neue Preview-Clients erben ihn so.
-2. User-Profile: unmanagedAttributePolicy=ADMIN_EDIT, damit das Attribut preview=<id> (gesetzt vom Backend,
-   gelesen vom Aufraeum-Job) gespeichert wird. Keycloak >= 24 verwirft unverwaltete Attribute sonst.
+2. Admin-Events an: sie halten fest, welcher Client (beg-<id>-crm) einen Nutzer angelegt hat. Der Aufraeum-Job
+   loescht damit die Nutzer verschwundener Previews, ohne dass die App Preview-Code braucht.
+3. Service-Account von beg-preview-cleanup bekommt realm-management/view-events (Admin-Events lesen).
 
 Umgebung: KEYCLOAK_URL, REALM, ADMIN_CLIENT_ID, ADMIN_CLIENT_SECRET (Service-Account im master-Realm, Secret beg-admin).
 """
@@ -17,8 +18,6 @@ import urllib.error
 from cleanup import _request
 
 SCOPE_NAME = "beg-roles"
-# Reihenfolge der Grosszuegigkeit (Keycloak UnmanagedAttributePolicy); ADMIN_EDIT ist das Minimum
-POLICY_ORDER = ["ADMIN_VIEW", "ADMIN_EDIT", "ENABLED"]
 
 
 def find_scope(scopes, name):
@@ -45,14 +44,23 @@ def scope_payload():
     }
 
 
-def profile_with_admin_edit(profile):
-    """(changed, profile) – hebt die Policy auf mindestens ADMIN_EDIT, laesst Grosszuegigeres stehen."""
-    current = profile.get("unmanagedAttributePolicy")
-    if current in POLICY_ORDER and POLICY_ORDER.index(current) >= POLICY_ORDER.index("ADMIN_EDIT"):
-        return False, profile
-    new = dict(profile)
-    new["unmanagedAttributePolicy"] = "ADMIN_EDIT"
+def events_config_with_admin_events(cfg):
+    """(changed, cfg) – schaltet Admin-Events ein, laesst alle anderen Event-Einstellungen unveraendert."""
+    if cfg.get("adminEventsEnabled"):
+        return False, cfg
+    new = dict(cfg)
+    new["adminEventsEnabled"] = True
     return True, new
+
+
+CLEANUP_CLIENT = "beg-preview-cleanup"
+CLEANUP_EXTRA_ROLES = ["view-events"]
+
+
+def missing_roles(available, current, wanted):
+    """Rollen aus `wanted`, die in `current` fehlen – als Repraesentationen aus `available`."""
+    have = {r["name"] for r in current}
+    return [r for r in available if r["name"] in wanted and r["name"] not in have]
 
 
 def _put_json(url, token, body):
@@ -100,12 +108,22 @@ def main():
         _put_json(f"{admin}/default-default-client-scopes/{scope_id}", token, {})
         print(f"{SCOPE_NAME} als Realm-Default-Scope gesetzt")
 
-    changed, profile = profile_with_admin_edit(_request(f"{admin}/users/profile", token))
+    cleanup_id = _request(f"{admin}/clients?clientId={CLEANUP_CLIENT}", token)[0]["id"]
+    sa_user = _request(f"{admin}/clients/{cleanup_id}/service-account-user", token)["id"]
+    rm_id = _request(f"{admin}/clients?clientId=realm-management", token)[0]["id"]
+    missing = missing_roles(_request(f"{admin}/clients/{rm_id}/roles", token),
+                            _request(f"{admin}/users/{sa_user}/role-mappings/clients/{rm_id}", token),
+                            CLEANUP_EXTRA_ROLES)
+    if missing:
+        _post_json(f"{admin}/users/{sa_user}/role-mappings/clients/{rm_id}", token, missing)
+        print(f"{CLEANUP_CLIENT}: Rollen ergaenzt {[r['name'] for r in missing]}")
+
+    changed, cfg = events_config_with_admin_events(_request(f"{admin}/events/config", token))
     if changed:
-        _put_json(f"{admin}/users/profile", token, profile)
-        print("User-Profile: unmanagedAttributePolicy=ADMIN_EDIT gesetzt")
+        _put_json(f"{admin}/events/config", token, cfg)
+        print("Admin-Events eingeschaltet")
     else:
-        print("User-Profile: Policy passt")
+        print("Admin-Events bereits an")
     return 0
 
 
