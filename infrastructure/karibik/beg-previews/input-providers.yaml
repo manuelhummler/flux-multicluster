@@ -42,3 +42,6 @@ spec:
     includeBranch: "^main$"
   defaultValues:
     kind: main
+    # GitLabBranch exportiert kein title; das Template liest inputs.title (Opt-out "[no-preview]") und bricht
+    # ohne den Schluessel fuer ALLE Inputs ab ("map has no entry for key title").
+    title: ""
