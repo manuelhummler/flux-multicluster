@@ -136,6 +136,10 @@ rules:
   - apiGroups: ["cilium.io"]
     resources: ["ciliumnetworkpolicies"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Redirect crm-<id>/ -> /api/ (Middleware crm-root); Traefik erlaubt keine Namespace-uebergreifenden Verweise
+  - apiGroups: ["traefik.io"]
+    resources: ["middlewares"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 # Gebunden pro Preview an beg-<id>-keycloak (RoleBinding beg-<id>-keycloak aus dem ResourceSet)
 apiVersion: rbac.authorization.k8s.io/v1

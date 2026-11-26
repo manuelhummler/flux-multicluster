@@ -14,7 +14,7 @@
 
 - **Kein Push, kein Commit durch den Agenten.** Jede Task endet mit „Checkpoint: Nutzer prüft und committet“. Cluster-Änderungen entstehen nur durch den Push des Nutzers; der Agent darf lesend `kubectl --context karibik get/describe/logs` nutzen und `kubectl apply --dry-run=server`. Echte `kubectl apply` nur in den Spike-Tasks und nur nach Freigabe des Nutzers.
 - Kein `privileged`, kein DinD, kein Docker-Socket.
-- Hosts: `beg-mr-<iid>.hummler.com`, `beg-main.hummler.com`, Keycloak `auth-beg.hummler.com`.
+- Hosts: `portal-<id>.hummler.com` (Portal) und `crm-<id>.hummler.com` (CRM/API unter `/api`) mit `<id>` = `mr-<iid>` bzw. `main` (geändert 2026-11-26, vorher ein Host `beg-<id>`), Keycloak `auth-beg.hummler.com`.
 - Keycloak: Instanz `beg` im Namespace `keycloak`, Realm `beg`, Feature `client-admin-api:v2`.
 - Client-Namen: `beg-mr-<id>-crm`, `beg-mr-<id>-portal` (bzw. `beg-main-…`), statisch `beg-e2e-admin`.
 - Preview-Namespace: `beg-mr-<iid>` bzw. `beg-main`.
@@ -189,7 +189,7 @@
 - Create: `tests/e2e/fixtures/keycloak-admin.ts`
 
 **Interfaces:**
-- Consumes: Preview-URL `https://beg-mr-$CI_MERGE_REQUEST_IID.hummler.com` bzw. `https://beg-main.hummler.com`; CI-Variable `BEG_E2E_ADMIN_SECRET` (maskiert) für Client `beg-e2e-admin`.
+- Consumes: Preview-URLs `https://portal-mr-$CI_MERGE_REQUEST_IID.hummler.com` / `https://crm-mr-$CI_MERGE_REQUEST_IID.hummler.com/api` bzw. `portal-main` / `crm-main`; CI-Variable `BEG_E2E_ADMIN_SECRET` (maskiert) für Client `beg-e2e-admin`.
 - Produces: `createE2eUser(): Promise<{username, password}>`, `deleteE2eUser(username): Promise<void>` in `keycloak-admin.ts`.
 
 - [ ] **Step 1:** `wait-for-preview.sh <base-url> <sha> <timeout-s>`: pollt `<base-url>/api/actuator/info` bis `.preview.commit == <sha>` und `/api/actuator/health` `UP`, Exit 1 nach Timeout (1200 s) mit letzter Antwort im Log. Test lokal gegen eine nicht existente URL → Exit 1 nach kurzem Timeout; gegen laufende Preview → Exit 0.

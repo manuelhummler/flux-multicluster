@@ -90,8 +90,11 @@ spec:
       expression: request.userInfo.username.split(':')[3]
     - name: id
       expression: variables.sa.substring(4, size(variables.sa) - 9)
-    - name: host
-      expression: "'https://beg-' + variables.id + '.hummler.com'"
+    # Erlaubte Origins der Preview: portal-<id>, crm-<id>; beg-<id> nur fuer den Uebergang (alte Branches mit
+    # einem Host) – entfernen, wenn kein solcher MR mehr offen ist
+    - name: origins
+      expression: >-
+        ['portal-', 'crm-', 'beg-'].map(p, 'https://' + p + variables.id + '.hummler.com')
     # spec.client ist im CRD Pflichtfeld
     - name: client
       expression: object.spec.client
@@ -113,12 +116,12 @@ spec:
       message: "Nur die Clients der eigenen Preview: beg-<id>-crm / beg-<id>-portal"
     - expression: >-
         !has(variables.client.redirectUris) ||
-        variables.client.redirectUris.all(u, u.startsWith(variables.host + '/'))
-      message: "Redirect-URIs nur auf den eigenen Preview-Host"
+        variables.client.redirectUris.all(u, variables.origins.exists(o, u.startsWith(o + '/')))
+      message: "Redirect-URIs nur auf die eigenen Preview-Hosts"
     - expression: >-
         !has(variables.client.webOrigins) ||
-        variables.client.webOrigins.all(o, o == '+' || o == variables.host)
-      message: "Web-Origins nur '+' oder der eigene Preview-Host"
+        variables.client.webOrigins.all(o, o == '+' || o in variables.origins)
+      message: "Web-Origins nur '+' oder die eigenen Preview-Hosts"
     - expression: >-
         !has(variables.client.serviceAccountRoles) ||
         variables.client.serviceAccountRoles.all(r, r in variables.allowedRoles)
@@ -153,16 +156,21 @@ spec:
       expression: >-
         request.userInfo.username.startsWith('system:serviceaccount:beg-previews:beg-') &&
         request.userInfo.username.endsWith('-app')
+  variables:
+    # Namespace beg-<id> -> erlaubte Hosts portal-<id>, crm-<id>; beg-<id> nur fuer den Uebergang (alte Branches)
+    - name: hosts
+      expression: >-
+        ['portal-', 'crm-', 'beg-'].map(p, p + request.namespace.substring(4) + '.hummler.com')
   validations:
     # Ohne Rules griffe ein defaultBackend fuer beliebige Hosts - fuer Previews nicht erlaubt
     - expression: "!has(object.spec.defaultBackend)"
       message: "Preview-Ingress ohne defaultBackend"
     - expression: >-
         (!has(object.spec.rules) ||
-         object.spec.rules.all(r, has(r.host) && r.host == request.namespace + '.hummler.com')) &&
+         object.spec.rules.all(r, has(r.host) && r.host in variables.hosts)) &&
         (!has(object.spec.tls) ||
-         object.spec.tls.all(t, !has(t.hosts) || t.hosts.all(h, h == request.namespace + '.hummler.com')))
-      message: "Preview-Ingress nur fuer den eigenen Host <namespace>.hummler.com"
+         object.spec.tls.all(t, !has(t.hosts) || t.hosts.all(h, h in variables.hosts)))
+      message: "Preview-Ingress nur fuer die eigenen Hosts portal-<id>/crm-<id>.hummler.com"
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding

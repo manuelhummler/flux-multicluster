@@ -1,6 +1,6 @@
 # Preview-Umgebungen von beg-verwaltung (Doku 4j, Design docs/superpowers/specs/2026-11-25-beg-mr-previews-design.md).
 # Pro Input (offener MR bzw. main) entsteht eine Preview mit ID mr-<iid> bzw. main:
-#   Namespace beg-<id>, Host beg-<id>.hummler.com, Clients beg-<id>-crm / beg-<id>-portal in Keycloak "beg".
+#   Namespace beg-<id>, Hosts portal-<id>.hummler.com (Portal) und crm-<id>.hummler.com (CRM unter /api), Clients beg-<id>-crm / beg-<id>-portal in Keycloak "beg".
 # Abbau: MR gemerged/geschlossen ODER "[no-preview]" im MR-Titel -> der Input rendert nichts mehr, der Operator
 # raeumt ab: erst die Kustomizations (die prunen Deployments und KeycloakOIDCClients -> Operator loescht den Client
 # in Keycloak), dann Namespace, Secrets, RBAC. Label "preview::pause" friert eine Preview nur ein (skip.labels).
@@ -207,7 +207,8 @@ spec:
           name: beg-<< $id >>-app
           namespace: beg-previews
           annotations:
-            beg-preview/url: "https://beg-<< $id >>.hummler.com"
+            beg-preview/portal-url: "https://portal-<< $id >>.hummler.com"
+            beg-preview/crm-url: "https://crm-<< $id >>.hummler.com/api/"
         spec:
           interval: 10m
           retryInterval: 1m
@@ -233,6 +234,9 @@ spec:
             substitute:
               PREVIEW_ID: "<< $id >>"
               PREVIEW_SHA: "<< inputs.sha >>"
+              PORTAL_HOST: "portal-<< $id >>.hummler.com"
+              CRM_HOST: "crm-<< $id >>.hummler.com"
+              # Uebergang: alte Branches (ein Host, vor feat/preview-hosts) – entfernen, wenn keiner mehr offen ist
               PREVIEW_HOST: "beg-<< $id >>.hummler.com"
         ---
         apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -256,5 +260,8 @@ spec:
             substitute:
               PREVIEW_ID: "<< $id >>"
               PREVIEW_SHA: "<< inputs.sha >>"
+              PORTAL_HOST: "portal-<< $id >>.hummler.com"
+              CRM_HOST: "crm-<< $id >>.hummler.com"
+              # Uebergang: alte Branches (ein Host, vor feat/preview-hosts) – entfernen, wenn keiner mehr offen ist
               PREVIEW_HOST: "beg-<< $id >>.hummler.com"
         <<- end >>

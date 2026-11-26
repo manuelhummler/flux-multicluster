@@ -25,7 +25,7 @@ Sicherheitsgründen. Ein DinD-Runner ist ausgeschlossen (Entscheidung des Nutzer
 ## 2. Ziele, Nicht-Ziele, Anti-Ziele
 
 **Ziele**
-- Eine Preview pro offenem MR, URL aus der MR-Nummer ableitbar: `https://beg-mr-<iid>.hummler.com`
+- Eine Preview pro offenem MR, URLs aus der MR-Nummer ableitbar: `https://portal-mr-<iid>.hummler.com` (Portal) und `https://crm-mr-<iid>.hummler.com/api/` (CRM; geändert 2026-11-26, vorher ein Host `beg-mr-<iid>`)
   (Portal) und dieselbe Domain unter `/api` bzw. dem CRM-Pfad für das Backend (genaue Pfadaufteilung: §6.3).
 - Jeder neue Commit im MR → Preview mit **frischer Datenbank und frischem Dateispeicher**, befüllt aus den
   **Demo-Daten** (vollständig ausgedachte Daten).
@@ -113,7 +113,7 @@ Weitere Entscheidungen im Gespräch:
 ```
 gitlab.com: beg-verwaltung MR !<iid> (Branch, Head-SHA)
      │  (1) CI: image_backend / image_portal rootless → registry.gitlab.com/.../ci/{backend,portal}:<sha>
-     │  (2) CI: test_e2e wartet auf Preview mit <sha>, dann Playwright → https://beg-mr-<iid>.hummler.com
+     │  (2) CI: test_e2e wartet auf Preview mit <sha>, dann Playwright → portal-/crm-mr-<iid>.hummler.com
      ▼
 karibik / Flux Operator
   ResourceSetInputProvider beg-merge-requests  (type GitLabMergeRequest, Token read-only)
@@ -155,7 +155,7 @@ karibik / Flux Operator
   bekommen **keine** Preview (Filter bzw. Prüfung, dass der Branch im Upstream existiert); kämen künftig
   Außenstehende dazu, wird auf Opt-in per Maintainer-Label umgestellt.
 - **Dauerhafte `main`-Preview:** zweiter InputProvider `type: GitLabBranch`, `includeBranch: "^main$"`, gleiche
-  Vorlage, Host `beg-main.hummler.com`, ID `main`. Jeder Merge = neuer Commit = frische Demo-Daten. Dient als
+  Vorlage, Hosts `portal-main.hummler.com` / `crm-main.hummler.com`, ID `main`. Jeder Merge = neuer Commit = frische Demo-Daten. Dient als
   Ziel für `test_e2e` auf `main` und als stets aktuelle Demo des Hauptstands. Sie zählt mit ins RAM-Budget.
   Reaktionszeit: `reconcileEvery` 2–5 min plus optional Flux-`Receiver` `type: gitlab` (Webhook) für Sekunden.
 - **ResourceSet** `beg-previews` mit eigenem ServiceAccount (Impersonation), Rechte: Namespaces `beg-mr-*`
@@ -273,7 +273,7 @@ CI (`ci-low`) – Builder entscheidet.
   CI-Variablen entfallen. Umfang der Umschreibung ermittelt der Builder (Durchsicht `tests/e2e`).
 - Parallele Läufe gegen dieselbe Preview (Retry während ein Lauf noch läuft) per `resource_group: preview-$CI_MERGE_REQUEST_IID`
   serialisieren.
-- **`main`:** `test_e2e` läuft nach dem Merge gegen `beg-main.hummler.com` und wartet dort auf den Merge-Commit.
+- **`main`:** `test_e2e` läuft nach dem Merge gegen `portal-main` / `crm-main.hummler.com` und wartet dort auf den Merge-Commit.
 
 ## 7. Risiken und vorab zu prüfen (Spikes)
 
