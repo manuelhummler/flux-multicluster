@@ -86,6 +86,36 @@ class ScopeMappingsTest(unittest.TestCase):
                          set(realm_setup.PREVIEW_USER_ADMIN_COMPOSITES))
 
 
+class TenantRolesTest(unittest.TestCase):
+    """BegClaimsRoleMapper (beg-verwaltung) nimmt aus "roles" nur "<mandant>_<code>" mit Mandant = tenant oder
+    global; der Teil nach "_" muss ein Jmix-Rollencode sein."""
+
+    @staticmethod
+    def mapper_codes(roles, tenant):
+        # Nachbau von BegClaimsRoleMapper.getResourceRolesCodes ohne Repository-Pruefung
+        out = set()
+        for r in roles:
+            parts = r.split("_")
+            if len(parts) >= 2 and parts[0].lower() in ("global", tenant):
+                out.add(parts[1])
+        return out
+
+    def test_preview_admin_group_grants_admin_and_full_access(self):
+        self.assertEqual(realm_setup.ADMIN_GROUP_TENANTS["preview_admin"], "preview")
+        codes = self.mapper_codes(realm_setup.tenant_roles("preview"), "preview")
+        self.assertTrue({"admin", "system-full-access"} <= codes)
+
+    def test_global_admin_group_works_for_any_tenant(self):
+        codes = self.mapper_codes(realm_setup.tenant_roles("global"), "preview")
+        self.assertTrue({"admin", "system-full-access"} <= codes)
+
+    def test_bare_import_roles_are_ignored_by_mapper(self):
+        self.assertEqual(self.mapper_codes(["admin", "system-full-access"], "preview"), set())
+
+    def test_tenant_roles_are_mapped_into_tokens(self):
+        self.assertTrue(set(realm_setup.all_tenant_roles()) <= set(realm_setup.SCOPE_REALM_ROLES))
+
+
 class AdminApiScopeTest(unittest.TestCase):
     """Keycloak 26.x verlangt fuer die Admin-API die Audience aus Scope kc-admin-api (Spike A 2026-11-25): ohne sie
     401 trotz realm-management-Rollen. Service-Account-Clients brauchen ihn als Default-Scope."""

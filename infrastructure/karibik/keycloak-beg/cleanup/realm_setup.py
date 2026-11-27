@@ -16,6 +16,10 @@ Standard, und dieser Job ergaenzt, was die Previews brauchen – beliebig oft wi
 6. Scope kc-admin-api (Audience der Admin-API, Keycloak 26.x) als Realm-Default und bei allen vorhandenen
    Service-Account-Clients als Default-Scope: ohne ihn lehnt die Admin-API Realm-Tokens mit 401 ab, auch mit
    passenden Rollen. KeyCloakService der App fordert keinen Scope an, deshalb Default statt Optional.
+7. Mandanten-Rollen fuer die Admin-Gruppen: BegClaimsRoleMapper der App liest aus dem Claim "roles" nur Eintraege
+   "<mandant>_<jmix-rollencode>" (Mandant = KEYCLOAKSERVICE_CONFIG_TENANT, in Previews "preview", oder "global").
+   Die Realm-Rollen aus dem Import heissen nur "admin", "system-full-access", ... und werden verworfen. Der Job legt
+   preview_<code>/global_<code> an, haengt sie an die Gruppen preview_admin/global_admin und mappt sie an beg-roles.
 
 Umgebung: KEYCLOAK_URL, REALM, ADMIN_CLIENT_ID, ADMIN_CLIENT_SECRET (Service-Account im master-Realm, Secret beg-admin).
 """
@@ -72,9 +76,27 @@ def preview_user_admin_role_payload():
 
 
 # Rollen, die in Tokens der Preview-Clients duerfen (Scope-Mappings am Default-Scope beg-roles)
-SCOPE_REALM_ROLES = ["admin", "system-full-access", "system-user-access", "system-user-readonly",
-                     "bpm-process-task-performer", "portal-user", PREVIEW_USER_ADMIN_ROLE]
 SCOPE_REALM_MANAGEMENT_ROLES = list(PREVIEW_USER_ADMIN_COMPOSITES)
+
+# Jmix-Rollencodes der Verwaltung (AdminRole, FullAccessRole, BpmProcessTaskPerformerRole in beg-verwaltung)
+ADMIN_ROLE_CODES = ["admin", "system-full-access", "bpm-process-task-performer"]
+# Gruppe -> Mandant; Gruppennamen prueft die App selbst (<tenant>_admin, global_admin in KeyCloakService)
+ADMIN_GROUP_TENANTS = {"preview_admin": "preview", "global_admin": "global"}
+
+
+def tenant_roles(tenant):
+    """Realm-Rollen, die BegClaimsRoleMapper fuer den Mandanten als Jmix-Rollen erkennt."""
+    return [f"{tenant}_{code}" for code in ADMIN_ROLE_CODES]
+
+
+def all_tenant_roles():
+    return [r for t in ADMIN_GROUP_TENANTS.values() for r in tenant_roles(t)]
+
+
+# Rollen, die in Tokens der Preview-Clients duerfen (Scope-Mappings am Default-Scope beg-roles)
+SCOPE_REALM_ROLES = ["admin", "system-full-access", "system-user-access", "system-user-readonly",
+                     "bpm-process-task-performer", "portal-user", PREVIEW_USER_ADMIN_ROLE] + all_tenant_roles()
+
 
 ADMIN_API_SCOPE = "kc-admin-api"
 BUILTIN_CLIENTS = {"realm-management", "broker", "account", "account-console", "admin-cli", "security-admin-console"}
@@ -162,7 +184,23 @@ def main():
         _post_json(f"{role_url}/composites", token, missing)
         print(f"{PREVIEW_USER_ADMIN_ROLE}: Composites ergaenzt {[r['name'] for r in missing]}")
 
+    existing = {r["name"] for r in _request(f"{admin}/roles", token)}
+    for name in all_tenant_roles():
+        if name not in existing:
+            _post_json(f"{admin}/roles", token, {"name": name, "description": "Jmix-Rolle fuer BegClaimsRoleMapper"})
+            print(f"Realm-Rolle {name} angelegt")
     realm_roles = _request(f"{admin}/roles", token)
+    groups = _request(f"{admin}/groups?briefRepresentation=true&max=1000", token)
+    for group_name, tenant in ADMIN_GROUP_TENANTS.items():
+        group_id = find_scope(groups, group_name)
+        if group_id is None:
+            raise RuntimeError(f"Gruppe {group_name} fehlt im Realm")
+        group_url = f"{admin}/groups/{group_id}/role-mappings/realm"
+        missing = missing_roles(realm_roles, _request(group_url, token), tenant_roles(tenant))
+        if missing:
+            _post_json(group_url, token, missing)
+            print(f"Gruppe {group_name}: Rollen ergaenzt {[r['name'] for r in missing]}")
+
     scope_url = f"{admin}/client-scopes/{scope_id}/scope-mappings"
     missing = missing_roles(realm_roles, _request(f"{scope_url}/realm", token), SCOPE_REALM_ROLES)
     if missing:

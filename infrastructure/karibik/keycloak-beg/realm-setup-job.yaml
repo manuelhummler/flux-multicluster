@@ -1,12 +1,12 @@
 # Realm-Setup nach dem Import (Doku 4j): Client-Scope beg-roles als Realm-Default, Admin-Events an,
 # view-events fuer beg-preview-cleanup, Realm-Rolle beg-preview-user-admin, Scope-Mappings an beg-roles, kc-admin-api als Default (Begruendung in cleanup/realm_setup.py). Idempotent. Wartet per backoffLimit, bis der Realm-Import fertig ist.
-# Neu ausfuehren: Job loeschen (kubectl -n keycloak delete job beg-realm-setup-5) – Flux legt ihn wieder an.
+# Neu ausfuehren: Job loeschen (kubectl -n keycloak delete job beg-realm-setup-6) – Flux legt ihn wieder an.
 # Aendert sich realm_setup.py, Suffix hochzaehlen: der Job laeuft sonst nicht erneut (ConfigMap-Aenderung allein
 # startet keinen abgeschlossenen Job neu).
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: beg-realm-setup-5
+  name: beg-realm-setup-6
   annotations:
     # Job-Spec ist unveraenderlich: bei Aenderungen ersetzt Flux den Job statt am Update zu scheitern
     kustomize.toolkit.fluxcd.io/force: enabled

@@ -1552,6 +1552,36 @@ Hermes markiert injizierte Erinnerungen im Chat mit 👁️ (`recall_indicator`)
 - **Hermes: „Hindsight API … unreachable“** → Egress-Policy oder Service-Name; Test aus dem Hermes-Pod:
   `curl -s -o /dev/null -w '%{http_code}' http://hindsight-api.hindsight.svc.cluster.local:8888/health`.
 
+### Claude Code am selben Gedächtnis (ausprobiert 2026-11-27, Weg „Port-Forward“)
+
+Die API bringt einen **MCP-Server** mit (`/mcp`, standardmäßig aktiv, pro Bank `/mcp/<bank_id>/`, derselbe
+Bearer-Key wie bei Hermes). Claude Code auf dem Laptop ist als HTTP-MCP-Client im **User-Scope** registriert
+(`~/.claude.json`, Server `hindsight`, URL `http://localhost:8888/mcp/hermes/`, Header `Authorization: Bearer …`),
+also gegen die **Bank `hermes`** – Hermes und Claude Code teilen sich das Gedächtnis. Kein Ingress, keine
+Policy-Änderung: der Weg führt über `kubectl port-forward`, den Cilium (Traffic vom Kubelet) durchlässt.
+
+```powershell
+kubectl --context karibik -n hindsight port-forward svc/hindsight-api 8888:8888
+```
+
+Der Port-Forward muss laufen, solange Claude Code den Server nutzt; ohne ihn meldet `claude mcp list` den Server
+als nicht erreichbar, Claude Code arbeitet aber normal weiter. Registrierung (Key aus
+`infrastructure/karibik/hindsight/hindsight-api-key-encrypted.env`, einmalig):
+
+```powershell
+claude mcp add -s user --transport http hindsight http://localhost:8888/mcp/hermes/ --header "Authorization: Bearer <HINDSIGHT_API_KEY>"
+```
+
+Ergebnis 2026-11-27: Server `hindsight-mcp-server 1.2.1`, 36 Tools (`retain`, `recall`, `reflect`, Mental Models,
+Directives, Memories, Documents, Pages). Ohne Key antwortet `/mcp` mit 401. Claude Code ruft die Tools nur auf
+Zuruf bzw. wenn es passt – kein Auto-Recall/Auto-Retain wie beim Hermes-Plugin (das brächte der Installer
+`npx @vectorize-io/hindsight-coding-agents install claude-code --server self-hosted --api-url …` über Hooks, bewusst
+noch nicht eingerichtet: jedes `retain` kostet Aufrufe auf dem geteilten ChatGPT-Limit).
+
+Offen: Soll der Zugang dauerhaft werden, wäre ein Ingress-Pfad `/mcp` auf `hindsight.hummler.com` → `hindsight-api`
+denkbar – dann schützt nur noch der Bearer-Key (Entscheidung „Kein Ingress auf `/v1`“ oben), also nur mit
+Traefik-IP-Allowlist oder nach dem Keycloak-Cutover mit MCP-OAuth.
+
 ## 4h. GitLab Runner – CI-Jobs für gitlab.com (vorbereitet 2026-11-25)
 
 Ein **Gruppen-Runner** für `einfach-genossenschaft` auf gitlab.com mit Kubernetes-Executor: Der Manager-Pod pollt
